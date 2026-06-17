@@ -38,7 +38,7 @@ export class CashController {
   }
 
   @Get('dashboard')
-  getDashboard(@Query('from') from: string, @Query('to') to: string) {
-    return this.cashService.getDashboard({ from, to });
+  getDashboard(@Query('date') date?: string) {
+    return this.cashService.getDashboard(date);
   }
 }
