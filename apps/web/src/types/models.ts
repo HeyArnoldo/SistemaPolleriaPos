@@ -280,7 +280,12 @@ export interface BICommissionsResponse {
 declare global {
   interface Window {
     electronAPI?: {
-      printTicket: (htmlContent: string) => Promise<void>;
+      printTicket: (
+        html: string,
+        options?: { printerName?: string; marginsType?: number },
+      ) => Promise<void>;
+      getPrinters?: () => Promise<{ name: string; displayName?: string }[]>;
+      saveConfig: (url: string) => Promise<void>;
     };
   }
 }

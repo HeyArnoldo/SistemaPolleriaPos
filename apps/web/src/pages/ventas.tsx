@@ -14,44 +14,16 @@ import { useConnectivity } from '@/hooks/use-connectivity';
 import { ProductGrid } from '@/components/dashboard/ventas/product-grid';
 import { CartItemRow } from '@/components/dashboard/ventas/cart-item-row';
 import { PaymentForm } from '@/components/dashboard/ventas/payment-form';
+import { TicketPreviewDialog } from '@/components/dashboard/ventas/ticket-preview-dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { formatCurrency, formatDateTime } from '@/lib/formatting';
-import type { Sale } from '@/types/models';
-import { generateSaleNumber } from '@/lib/ventas';
-import { parseMoney } from '@/lib/ventas';
+import { formatCurrency } from '@/lib/formatting';
+import { generateSaleNumber, parseMoney } from '@/lib/ventas';
 import { getErrorMessage } from '@/lib/errors';
 import { enqueueSale } from '@/lib/queue-manager';
-
-function buildTicketHtml(sale: Sale): string {
-  const items = sale.items
-    .map(
-      (i) =>
-        `<tr><td>${i.product?.name ?? 'Producto'}</td><td>${i.quantity}</td><td>${formatCurrency(Number(i.unitPrice) * i.quantity)}</td></tr>`,
-    )
-    .join('');
-
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>
-  body { font-family: monospace; font-size: 12px; width: 80mm; margin: 0 auto; }
-  h2 { text-align: center; margin: 4px 0; font-size: 14px; }
-  p { margin: 2px 0; }
-  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-  th, td { text-align: left; padding: 2px 0; }
-  th:last-child, td:last-child { text-align: right; }
-  .total { font-size: 14px; font-weight: bold; border-top: 1px dashed #000; padding-top: 4px; }
-  @media print { body { -webkit-print-color-adjust: exact; } }
-</style>
-</head><body>
-<h2>Pollería Carbón</h2>
-<p>Ticket: ${sale.saleNumber ?? ''}</p>
-<p>Fecha: ${formatDateTime(sale.createdAt)}</p>
-<table>
-  <thead><tr><th>Producto</th><th>Cant</th><th>Total</th></tr></thead>
-  <tbody>${items}</tbody>
-</table>
-<p class="total">TOTAL: ${formatCurrency(sale.totalAmount)}</p>
-</body></html>`;
-}
+import { buildTicketHtml } from '@/lib/ticket';
+import { getPrintSettings } from '@/lib/print-settings';
+import { printTicket } from '@/lib/printing';
+import type { Sale } from '@/types/models';
 
 export default function VentasPage() {
   const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
@@ -62,6 +34,9 @@ export default function VentasPage() {
   const { isOnline } = useConnectivity();
 
   const [notesInput, setNotesInput] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewSale, setPreviewSale] = useState<Sale | null>(null);
 
   const {
     payments,
@@ -74,6 +49,33 @@ export default function VentasPage() {
     change,
     isValid,
   } = usePaymentState({ total, paymentMethods });
+
+  const handlePrintSale = (sale: Sale) => {
+    const settings = getPrintSettings();
+    const html = buildTicketHtml(sale, settings);
+
+    if (settings.previewBeforePrint) {
+      setPreviewHtml(html);
+      setPreviewSale(sale);
+      setPreviewOpen(true);
+    } else {
+      void printTicket(html, settings).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Error desconocido';
+        toast.error(`Error al imprimir: ${message}`);
+      });
+    }
+  };
+
+  const handleConfirmPrint = () => {
+    if (!previewSale) return;
+    setPreviewOpen(false);
+    const settings = getPrintSettings();
+    const html = buildTicketHtml(previewSale, settings);
+    void printTicket(html, settings).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      toast.error(`Error al imprimir: ${message}`);
+    });
+  };
 
   const handleSubmit = async () => {
     if (items.length === 0) {
@@ -112,9 +114,7 @@ export default function VentasPage() {
     createSale(salePayload, {
       onSuccess: (sale) => {
         toast.success('Venta registrada correctamente');
-        if (window.electronAPI) {
-          void window.electronAPI.printTicket(buildTicketHtml(sale));
-        }
+        handlePrintSale(sale);
         clearCart();
         resetPayments();
         setNotesInput('');
@@ -126,114 +126,124 @@ export default function VentasPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] gap-4 p-4 overflow-hidden">
-      {/* Left: Product grid */}
-      <div className="flex-1 overflow-hidden">
-        {loadingProducts ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <ProductGrid products={products} categories={categories} onAddProduct={addItem} />
-        )}
-      </div>
+    <>
+      <TicketPreviewDialog
+        isOpen={previewOpen}
+        onOpenChange={setPreviewOpen}
+        saleNumber={previewSale?.saleNumber}
+        previewHtml={previewHtml}
+        onPrint={handleConfirmPrint}
+      />
 
-      {/* Right: Cart + Payment */}
-      <div className="w-80 xl:w-96 flex flex-col gap-3 overflow-hidden">
-        <Card className="flex flex-col overflow-hidden flex-1">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4" />
-              Carrito
-              {items.length > 0 && (
-                <span className="ml-auto text-sm font-normal text-muted-foreground">
-                  {items.reduce((s, i) => s + i.quantity, 0)} items
-                </span>
+      <div className="flex h-[calc(100vh-4rem)] gap-4 p-4 overflow-hidden">
+        {/* Left: Product grid */}
+        <div className="flex-1 overflow-hidden">
+          {loadingProducts ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <ProductGrid products={products} categories={categories} onAddProduct={addItem} />
+          )}
+        </div>
+
+        {/* Right: Cart + Payment */}
+        <div className="w-80 xl:w-96 flex flex-col gap-3 overflow-hidden">
+          <Card className="flex flex-col overflow-hidden flex-1">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4" />
+                Carrito
+                {items.length > 0 && (
+                  <span className="ml-auto text-sm font-normal text-muted-foreground">
+                    {items.reduce((s, i) => s + i.quantity, 0)} items
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-hidden flex flex-col p-3 pt-0">
+              {items.length === 0 ? (
+                <p className="text-center text-muted-foreground text-sm py-8">
+                  Sin productos en el carrito
+                </p>
+              ) : (
+                <ScrollArea className="flex-1">
+                  <div className="pr-2">
+                    {items.map((item) => (
+                      <CartItemRow
+                        key={item.product.id}
+                        item={item}
+                        onUpdateQuantity={updateQuantity}
+                        onRemove={removeItem}
+                      />
+                    ))}
+                  </div>
+                </ScrollArea>
               )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-hidden flex flex-col p-3 pt-0">
-            {items.length === 0 ? (
-              <p className="text-center text-muted-foreground text-sm py-8">
-                Sin productos en el carrito
-              </p>
-            ) : (
-              <ScrollArea className="flex-1">
-                <div className="pr-2">
-                  {items.map((item) => (
-                    <CartItemRow
-                      key={item.product.id}
-                      item={item}
-                      onUpdateQuantity={updateQuantity}
-                      onRemove={removeItem}
-                    />
-                  ))}
-                </div>
-              </ScrollArea>
-            )}
 
-            {items.length > 0 && (
-              <>
-                <Separator className="my-2" />
-                <div className="flex justify-between text-sm font-bold mb-3">
-                  <span>Total</span>
-                  <span>{formatCurrency(total)}</span>
-                </div>
+              {items.length > 0 && (
+                <>
+                  <Separator className="my-2" />
+                  <div className="flex justify-between text-sm font-bold mb-3">
+                    <span>Total</span>
+                    <span>{formatCurrency(total)}</span>
+                  </div>
 
-                <PaymentForm
-                  payments={payments}
-                  paymentMethods={paymentMethods}
-                  total={total}
-                  totalPaid={totalPaid}
-                  change={change}
-                  onAddLine={addPaymentLine}
-                  onRemoveLine={removePaymentLine}
-                  onUpdateAmount={(i, v) => updatePayment(i, { amount: v })}
-                  onUpdateMethod={setPaymentMethodForLine}
-                  onUpdateTransferTime={(i, v) => updatePayment(i, { transferTime: v })}
-                />
+                  <PaymentForm
+                    payments={payments}
+                    paymentMethods={paymentMethods}
+                    total={total}
+                    totalPaid={totalPaid}
+                    change={change}
+                    onAddLine={addPaymentLine}
+                    onRemoveLine={removePaymentLine}
+                    onUpdateAmount={(i, v) => updatePayment(i, { amount: v })}
+                    onUpdateMethod={setPaymentMethodForLine}
+                    onUpdateTransferTime={(i, v) => updatePayment(i, { transferTime: v })}
+                  />
 
-                <Textarea
-                  placeholder="Notas (opcional)"
-                  value={notesInput}
-                  onChange={(e) => setNotesInput(e.target.value)}
-                  className="resize-none text-sm mt-2"
-                  rows={2}
-                />
+                  <Textarea
+                    placeholder="Notas (opcional)"
+                    value={notesInput}
+                    onChange={(e) => setNotesInput(e.target.value)}
+                    className="resize-none text-sm mt-2"
+                    rows={2}
+                  />
 
-                <div className="mt-3 space-y-2">
-                  <Button
-                    className="w-full"
-                    onClick={handleSubmit}
-                    disabled={isSubmitting || !isValid || items.length === 0}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Registrando...
-                      </>
-                    ) : (
-                      'Registrar venta'
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full text-destructive hover:text-destructive"
-                    onClick={() => {
-                      clearCart();
-                      resetPayments();
-                      setNotesInput('');
-                    }}
-                    disabled={isSubmitting}
-                  >
-                    Limpiar carrito
-                  </Button>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+                  <div className="mt-3 space-y-2">
+                    <Button
+                      className="w-full"
+                      onClick={() => void handleSubmit()}
+                      disabled={isSubmitting || !isValid || items.length === 0}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Registrando...
+                        </>
+                      ) : (
+                        'Registrar venta'
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full text-destructive hover:text-destructive"
+                      onClick={() => {
+                        clearCart();
+                        resetPayments();
+                        setNotesInput('');
+                      }}
+                      disabled={isSubmitting}
+                    >
+                      Limpiar carrito
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

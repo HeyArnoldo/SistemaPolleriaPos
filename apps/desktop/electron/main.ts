@@ -160,17 +160,36 @@ ipcMain.handle('save-config', (_event, webUrl: string) => {
   }
 });
 
-ipcMain.handle('print-ticket', async (_event, htmlContent: string) => {
-  const printWin = new BrowserWindow({
-    show: false,
-    webPreferences: { contextIsolation: true },
-  });
-  await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-  return new Promise<void>((resolve, reject) => {
-    printWin.webContents.print({ silent: true, printBackground: true }, (success, errorType) => {
-      printWin.destroy();
-      if (success) resolve();
-      else reject(new Error(errorType));
+ipcMain.handle(
+  'print-ticket',
+  async (_event, html: string, options?: { printerName?: string; marginsType?: number }) => {
+    const printWin = new BrowserWindow({
+      show: false,
+      webPreferences: { contextIsolation: true },
     });
-  });
+    await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    return new Promise<void>((resolve, reject) => {
+      printWin.webContents.print(
+        {
+          silent: true,
+          printBackground: true,
+          ...(options?.printerName ? { deviceName: options.printerName } : {}),
+          ...(options?.marginsType !== undefined ? { marginsType: options.marginsType } : {}),
+        },
+        (success, errorType) => {
+          printWin.destroy();
+          if (success) resolve();
+          else reject(new Error(errorType));
+        },
+      );
+    });
+  },
+);
+
+ipcMain.handle('get-printers', async (_event) => {
+  const wins = BrowserWindow.getAllWindows();
+  const win = wins[0];
+  if (!win) return [];
+  const printers = await win.webContents.getPrintersAsync();
+  return printers.map((p) => ({ name: p.name, displayName: p.displayName }));
 });
