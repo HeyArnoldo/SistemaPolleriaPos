@@ -21,6 +21,7 @@ export const createUserSchema = z.object({
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 
 export const updateUserSchema = createUserSchema.omit({ profile: true }).partial().extend({
+  isActive: z.boolean().optional(),
   profile: createProfileSchema.partial().optional(),
 });
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
