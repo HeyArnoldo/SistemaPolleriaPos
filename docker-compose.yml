@@ -3,17 +3,17 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: template-fullstack-db
+    container_name: sistema-polleria-pos-db
     environment:
       POSTGRES_USER: ${DB_USER:-app}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-app}
-      POSTGRES_DB: ${DB_NAME:-template_fullstack}
+      POSTGRES_DB: ${DB_NAME:-sistema_polleria_pos}
     ports:
       - '${DB_PORT:-5432}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-app} -d ${DB_NAME:-template_fullstack}']
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-app} -d ${DB_NAME:-sistema_polleria_pos}']
       interval: 5s
       timeout: 5s
       retries: 10

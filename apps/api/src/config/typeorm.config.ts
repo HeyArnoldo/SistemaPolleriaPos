@@ -12,7 +12,7 @@ export const dataSourceOptions: DataSourceOptions = {
   port: parseInt(process.env.DB_PORT ?? '5432', 10),
   username: process.env.DB_USER ?? 'app',
   password: process.env.DB_PASSWORD ?? 'app',
-  database: process.env.DB_NAME ?? 'template_fullstack',
+  database: process.env.DB_NAME ?? 'sistema_polleria_pos',
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
   synchronize: false,

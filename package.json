@@ -1,5 +1,5 @@
 {
-  "name": "template-fullstack",
+  "name": "sistema-polleria-pos",
   "version": "0.1.0",
   "private": true,
   "description": "Template fullstack: React 19 + Vite 7 + shadcn / NestJS 11 + TypeORM + PostgreSQL (pnpm monorepo)",
@@ -21,7 +21,6 @@
     "migration:run": "pnpm --filter @app/api run migration:run",
     "migration:revert": "pnpm --filter @app/api run migration:revert",
     "seed": "pnpm --filter @app/api run seed",
-    "init": "node scripts/init.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

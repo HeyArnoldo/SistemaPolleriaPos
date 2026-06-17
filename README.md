@@ -10,7 +10,7 @@ Template fullstack listo para producción: **React 19 + Vite 7 + Tailwind v4 + s
 
 ```bash
 # 1. Crea tu repo desde el template
-gh repo create mi-proyecto --template HeyArnoldo/template-fullstack --private --clone
+gh repo create mi-proyecto --template HeyArnoldo/sistema-polleria-pos --private --clone
 cd mi-proyecto
 
 # 2. Inicialízalo (renombra todo y se autoelimina)

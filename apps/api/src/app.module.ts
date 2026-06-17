@@ -5,7 +5,6 @@ import { dataSourceOptions } from './config/typeorm.config';
 import { validateEnv } from './config/env.validation';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
-import { NotesModule } from './notes/notes.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -15,7 +14,6 @@ import { HealthModule } from './health/health.module';
     TypeOrmModule.forRoot(dataSourceOptions),
     UsersModule,
     AuthModule,
-    NotesModule,
     HealthModule,
   ],
 })

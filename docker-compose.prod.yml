@@ -8,11 +8,11 @@ services:
     environment:
       POSTGRES_USER: ${DB_USER:-app}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-app}
-      POSTGRES_DB: ${DB_NAME:-template_fullstack}
+      POSTGRES_DB: ${DB_NAME:-sistema_polleria_pos}
     volumes:
       - pgdata_prod:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-app} -d ${DB_NAME:-template_fullstack}']
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-app} -d ${DB_NAME:-sistema_polleria_pos}']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -27,7 +27,7 @@ services:
       DB_PORT: 5432
       DB_USER: ${DB_USER:-app}
       DB_PASSWORD: ${DB_PASSWORD:-app}
-      DB_NAME: ${DB_NAME:-template_fullstack}
+      DB_NAME: ${DB_NAME:-sistema_polleria_pos}
       API_PORT: 3000
       CORS_ORIGIN: http://localhost:8090
       FRONTEND_URL: http://localhost:8090

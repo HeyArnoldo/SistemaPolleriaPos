@@ -6,7 +6,7 @@ import { AppLayout } from '@/layouts/app-layout';
 // Páginas lazy-loaded: cada una es un chunk separado.
 const LoginPage = lazy(() => import('@/pages/login'));
 const RegisterPage = lazy(() => import('@/pages/register'));
-const NotesPage = lazy(() => import('@/pages/notes'));
+const HomePage = lazy(() => import('@/pages/home'));
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -16,7 +16,7 @@ export const router = createBrowserRouter([
     children: [
       {
         element: <AppLayout />,
-        children: [{ path: '/', element: <NotesPage /> }],
+        children: [{ path: '/', element: <HomePage /> }],
       },
     ],
   },
