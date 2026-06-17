@@ -184,6 +184,98 @@ export interface StoreSetting {
   updatedAt: string;
 }
 
+// BI Analytics types
+
+export type BIPeriod = 'today' | 'week' | 'month' | 'year';
+export type BIGroupBy = 'day' | 'week' | 'month';
+
+export interface BIQueryParams {
+  startDate?: string;
+  endDate?: string;
+  period?: BIPeriod;
+  groupBy?: BIGroupBy;
+  paymentMethodIds?: number[];
+  page?: number;
+  limit?: number;
+}
+
+export interface BISummaryRow {
+  paymentMethodId: number;
+  paymentMethodName: string;
+  commissionPercentage: number;
+  salesGross: number;
+  salesNet: number;
+  commissionsTotal: number;
+  transactionCount: number;
+  averageTicket: number;
+}
+
+export interface BITrendRow {
+  date: string;
+  salesGross: number;
+  salesNet: number;
+  commissionsTotal: number;
+  transactionCount: number;
+}
+
+export interface BISummaryTotals {
+  totalSalesGross: number;
+  totalSalesNet: number;
+  totalCommissions: number;
+  totalExpenses: number;
+  netProfit: number;
+  transactionCount: number;
+}
+
+export interface BISummaryPeriod {
+  start: string;
+  end: string;
+}
+
+export interface BISummaryResponse {
+  period: BISummaryPeriod;
+  summary: BISummaryTotals;
+  byPaymentMethod: BISummaryRow[];
+  trend: BITrendRow[];
+}
+
+export interface BIDetailTransaction {
+  id: number;
+  saleNumber: string;
+  date: string;
+  paymentMethodId: number;
+  paymentMethodName: string;
+  grossAmount: number;
+  netAmount: number;
+  commissionAmount: number;
+  commissionPercentage: number;
+}
+
+export interface BIPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface BIDetailResponse {
+  transactions: BIDetailTransaction[];
+  pagination: BIPagination;
+}
+
+export interface BICommissionsRow {
+  paymentMethodId: number;
+  paymentMethodName: string;
+  commissionPercentage: number;
+  commissionsTotal: number;
+}
+
+export interface BICommissionsResponse {
+  period: BISummaryPeriod;
+  totalCommissions: number;
+  byPaymentMethod: BICommissionsRow[];
+}
+
 // Electron IPC bridge — defined only when running inside the desktop app
 declare global {
   interface Window {

@@ -16,6 +16,7 @@ const DashboardPage = lazy(() => import('@/pages/dashboard'));
 const ProductosPage = lazy(() => import('@/pages/productos'));
 const UsuariosPage = lazy(() => import('@/pages/usuarios'));
 const ConfiguracionPage = lazy(() => import('@/pages/configuracion'));
+const HistorialPage = lazy(() => import('@/pages/historial'));
 
 /** Redirects to /ventas if the user lacks access to the given route key. */
 function RoleRoute({ route }: { route: RouteKey }) {
@@ -56,6 +57,10 @@ export const router = createBrowserRouter([
           {
             element: <RoleRoute route="configuracion" />,
             children: [{ path: 'configuracion', element: <ConfiguracionPage /> }],
+          },
+          {
+            element: <RoleRoute route="historial" />,
+            children: [{ path: 'historial', element: <HistorialPage /> }],
           },
         ],
       },

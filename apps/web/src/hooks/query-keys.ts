@@ -9,4 +9,8 @@ export const QUERY_KEYS = {
   expenses: (params?: object) => ['expenses', params] as const,
   users: ['users'] as const,
   settings: ['settings'] as const,
+  biSummary: (params?: object) => ['bi-summary', params] as const,
+  biDetail: (params?: object) => ['bi-detail', params] as const,
+  biCommissions: (params?: object) => ['bi-commissions', params] as const,
+  biTrends: (params?: object) => ['bi-trends', params] as const,
 } as const;
