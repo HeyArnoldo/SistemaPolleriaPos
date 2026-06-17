@@ -24,17 +24,17 @@ export function AppLayout() {
     <div className="min-h-screen bg-background">
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-          <span className="font-semibold">Template FullStack</span>
+          <span className="font-semibold">Pollería Carbón</span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2">
                 <UserIcon className="size-4" />
-                {user?.name}
+                {user?.profile.firstName}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel className="font-normal text-muted-foreground">
-                {user?.email}
+                {user?.username}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
