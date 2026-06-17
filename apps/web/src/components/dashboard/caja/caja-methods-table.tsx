@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -12,53 +12,58 @@ import type { CashDashboardSummaryRow } from '@/types/models';
 
 interface CajaMethodsTableProps {
   summary: CashDashboardSummaryRow[];
+  isFetching?: boolean;
 }
 
-export function CajaMethodsTable({ summary }: CajaMethodsTableProps) {
-  if (summary.length === 0) {
-    return null;
-  }
-
+export function CajaMethodsTable({ summary, isFetching }: CajaMethodsTableProps) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Desglose por Metodo de Pago</CardTitle>
+    <Card className="border-slate-200/70 shadow-sm">
+      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <CardTitle>Desglose por metodo</CardTitle>
+          <CardDescription>Ventas netas y egresos por metodo</CardDescription>
+        </div>
+        {isFetching ? <span className="text-xs text-slate-500">Actualizando...</span> : null}
       </CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Metodo</TableHead>
-              <TableHead className="text-right">Ventas brutas</TableHead>
-              <TableHead className="text-right">Ventas netas</TableHead>
-              <TableHead className="text-right">Comisiones</TableHead>
-              <TableHead className="text-right">Egresos</TableHead>
-              <TableHead className="text-right">Neto</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {summary.map((row) => (
-              <TableRow key={row.paymentMethodId}>
-                <TableCell className="font-medium">{row.paymentMethodName}</TableCell>
-                <TableCell className="text-right">
-                  {formatCurrency(Number(row.salesGross))}
-                </TableCell>
-                <TableCell className="text-right text-emerald-600">
-                  {formatCurrency(Number(row.salesNet))}
-                </TableCell>
-                <TableCell className="text-right text-rose-500">
-                  {formatCurrency(Number(row.commissionsTotal))}
-                </TableCell>
-                <TableCell className="text-right text-rose-600">
-                  {formatCurrency(Number(row.expensesTotal))}
-                </TableCell>
-                <TableCell className="text-right font-semibold">
-                  {formatCurrency(Number(row.netTotal))}
-                </TableCell>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Metodo</TableHead>
+                <TableHead>Ventas netas</TableHead>
+                <TableHead>Egresos</TableHead>
+                <TableHead className="text-right">Neto</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {summary.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="h-20 text-center text-sm text-slate-500">
+                    Aun no hay datos de caja para mostrar.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                summary.map((method) => {
+                  const net = Number(method.netTotal ?? 0);
+                  const tone = net >= 0 ? 'text-emerald-600' : 'text-rose-600';
+                  return (
+                    <TableRow key={method.paymentMethodId}>
+                      <TableCell className="font-medium text-slate-900">
+                        {method.paymentMethodName ?? `Metodo #${method.paymentMethodId}`}
+                      </TableCell>
+                      <TableCell>{formatCurrency(Number(method.salesNet))}</TableCell>
+                      <TableCell>{formatCurrency(Number(method.expensesTotal))}</TableCell>
+                      <TableCell className={`text-right font-semibold ${tone}`}>
+                        {formatCurrency(net)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );

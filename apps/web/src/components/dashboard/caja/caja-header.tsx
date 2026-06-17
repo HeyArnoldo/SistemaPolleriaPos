@@ -16,25 +16,29 @@ export function CajaHeader({ dataUpdatedAt, isFetching, onRefresh, isAdmin }: Ca
         minute: '2-digit',
         timeZone: 'America/Lima',
       })
-    : '--:--';
+    : 'Sin actualizar';
 
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
-        <p className="text-sm text-muted-foreground">Control de Caja</p>
-        <h1 className="text-2xl font-bold">Ajustes del Dia</h1>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Control de Caja
+        </p>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Ajustes del Dia</h1>
+        <p className="text-sm text-slate-500">
+          Actualizado {updatedTime}
+          {isFetching ? ' (actualizando...)' : ''}
+        </p>
         {isAdmin && (
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Solo administradores pueden anular ventas y egresos
+          <p className="text-xs text-slate-500">
+            Solo administradores pueden editar o anular ventas y egresos desde esta vista.
           </p>
         )}
       </div>
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span>Actualizado {updatedTime}</span>
-        <Button variant="outline" size="sm" onClick={onRefresh} disabled={isFetching}>
-          <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
-        </Button>
-      </div>
+      <Button variant="outline" size="sm" onClick={onRefresh} disabled={isFetching}>
+        <RefreshCw className={cn('mr-2 h-4 w-4', isFetching && 'animate-spin')} />
+        Actualizar
+      </Button>
     </div>
   );
 }
