@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   BarChart2,
   CreditCard,
+  History,
   KeyRound,
   LogOut,
   Package,
@@ -143,6 +144,10 @@ export function AppLayout() {
               <NavLink to="/usuarios" className={navLinkClass}>
                 <Users className="size-4" />
                 Usuarios
+              </NavLink>
+              <NavLink to="/historial" className={navLinkClass}>
+                <History className="size-4" />
+                Historial
               </NavLink>
               <NavLink to="/configuracion" className={navLinkClass}>
                 <Settings className="size-4" />
