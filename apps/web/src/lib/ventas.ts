@@ -53,7 +53,7 @@ const writeTicketCounter = (state: TicketCounterState) => {
   }
 };
 
-export const syncTicketCounterFromSale = (_saleNumber?: string, _createdAt?: string): boolean => {
+export const syncTicketCounterFromSale = (): boolean => {
   return false;
 };
 
