@@ -1,22 +1,63 @@
 import { lazy } from 'react';
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { ProtectedRoute } from '@/components/protected-route';
 import { AppLayout } from '@/layouts/app-layout';
+import { useMe } from '@/hooks/use-auth';
+import { canAccessRoute, type RouteKey } from '@/lib/permissions';
 
-// Páginas lazy-loaded: cada una es un chunk separado.
-const LoginPage = lazy(() => import('@/pages/login'));
-const RegisterPage = lazy(() => import('@/pages/register'));
-const HomePage = lazy(() => import('@/pages/home'));
+// Auth pages — eager since they are the entry point
+import LoginPage from '@/pages/login';
+
+// POS pages — lazy loaded
+const VentasPage = lazy(() => import('@/pages/ventas'));
+const EgresosPage = lazy(() => import('@/pages/egresos'));
+const CajaPage = lazy(() => import('@/pages/caja'));
+const DashboardPage = lazy(() => import('@/pages/dashboard'));
+const ProductosPage = lazy(() => import('@/pages/productos'));
+const UsuariosPage = lazy(() => import('@/pages/usuarios'));
+const ConfiguracionPage = lazy(() => import('@/pages/configuracion'));
+
+/** Redirects to /ventas if the user lacks access to the given route key. */
+function RoleRoute({ route }: { route: RouteKey }) {
+  const { data: user } = useMe();
+  if (!canAccessRoute(user?.role, route)) {
+    return <Navigate to="/ventas" replace />;
+  }
+  return <Outlet />;
+}
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
-  { path: '/register', element: <RegisterPage /> },
   {
     element: <ProtectedRoute />,
     children: [
       {
         element: <AppLayout />,
-        children: [{ path: '/', element: <HomePage /> }],
+        children: [
+          { index: true, element: <Navigate to="/ventas" replace /> },
+          { path: 'ventas', element: <VentasPage /> },
+          { path: 'egresos', element: <EgresosPage /> },
+          {
+            element: <RoleRoute route="caja" />,
+            children: [{ path: 'caja', element: <CajaPage /> }],
+          },
+          {
+            element: <RoleRoute route="dashboard" />,
+            children: [{ path: 'dashboard', element: <DashboardPage /> }],
+          },
+          {
+            element: <RoleRoute route="productos" />,
+            children: [{ path: 'productos', element: <ProductosPage /> }],
+          },
+          {
+            element: <RoleRoute route="usuarios" />,
+            children: [{ path: 'usuarios', element: <UsuariosPage /> }],
+          },
+          {
+            element: <RoleRoute route="configuracion" />,
+            children: [{ path: 'configuracion', element: <ConfiguracionPage /> }],
+          },
+        ],
       },
     ],
   },

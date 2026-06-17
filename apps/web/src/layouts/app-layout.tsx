@@ -1,6 +1,17 @@
-import { Outlet, useNavigate } from 'react-router-dom';
-import { LogOut, User as UserIcon } from 'lucide-react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import {
+  BarChart2,
+  CreditCard,
+  LogOut,
+  Package,
+  Settings,
+  ShoppingCart,
+  TrendingDown,
+  User as UserIcon,
+  Users,
+} from 'lucide-react';
 import { useLogout, useMe } from '@/hooks/use-auth';
+import { canAccessRoute } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -11,10 +22,20 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  [
+    'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+    isActive
+      ? 'bg-primary/10 text-primary'
+      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+  ].join(' ');
+
 export function AppLayout() {
   const { data: user } = useMe();
   const logout = useLogout();
   const navigate = useNavigate();
+
+  const isAdmin = canAccessRoute(user?.role, 'dashboard');
 
   const handleLogout = () => {
     logout.mutate(undefined, { onSuccess: () => navigate('/login') });
@@ -45,9 +66,47 @@ export function AppLayout() {
           </DropdownMenu>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl p-4">
-        <Outlet />
-      </main>
+
+      <div className="mx-auto flex max-w-5xl gap-6 px-4 py-4">
+        <nav className="hidden w-44 shrink-0 flex-col gap-1 sm:flex">
+          <NavLink to="/ventas" className={navLinkClass}>
+            <ShoppingCart className="size-4" />
+            Ventas
+          </NavLink>
+          <NavLink to="/egresos" className={navLinkClass}>
+            <TrendingDown className="size-4" />
+            Egresos
+          </NavLink>
+          {isAdmin && (
+            <>
+              <NavLink to="/caja" className={navLinkClass}>
+                <CreditCard className="size-4" />
+                Caja
+              </NavLink>
+              <NavLink to="/dashboard" className={navLinkClass}>
+                <BarChart2 className="size-4" />
+                Dashboard
+              </NavLink>
+              <NavLink to="/productos" className={navLinkClass}>
+                <Package className="size-4" />
+                Productos
+              </NavLink>
+              <NavLink to="/usuarios" className={navLinkClass}>
+                <Users className="size-4" />
+                Usuarios
+              </NavLink>
+              <NavLink to="/configuracion" className={navLinkClass}>
+                <Settings className="size-4" />
+                Configuración
+              </NavLink>
+            </>
+          )}
+        </nav>
+
+        <main className="min-w-0 flex-1">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
