@@ -2,14 +2,15 @@ import { z } from 'zod';
 
 export const createSaleItemSchema = z.object({
   productId: z.number().int().positive(),
-  quantity: z.number().int().positive(),
-  unitPrice: z.number().positive(),
+  quantity: z.coerce.number().int().positive(),
+  // Decimals serialize as strings (TypeORM), so accept numeric strings too.
+  unitPrice: z.coerce.number().positive(),
 });
 export type CreateSaleItemInput = z.infer<typeof createSaleItemSchema>;
 
 export const createPaymentSchema = z.object({
   paymentMethodId: z.number().int().positive(),
-  amount: z.number().min(0),
+  amount: z.coerce.number().min(0),
   transferTime: z
     .string()
     .regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Formato HH:mm o HH:mm:ss')

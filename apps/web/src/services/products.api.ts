@@ -1,14 +1,19 @@
 import { api } from '@/lib/api';
 import type { Product, ProductCategory } from '@/types/models';
 
+// TypeORM serializes decimals as strings; normalize price to a real number so
+// the declared Product.price: number type holds at runtime (cart totals,
+// ticket, sale payload all rely on it being numeric).
+const normalizeProduct = (p: Product): Product => ({ ...p, price: Number(p.price) });
+
 export const getProducts = async (): Promise<Product[]> => {
   const { data } = await api.get('/inventory/products');
-  return data;
+  return (data as Product[]).map(normalizeProduct);
 };
 
 export const getProduct = async (id: number): Promise<Product> => {
   const { data } = await api.get(`/inventory/products/${id}`);
-  return data;
+  return normalizeProduct(data as Product);
 };
 
 export const createProduct = async (payload: {
