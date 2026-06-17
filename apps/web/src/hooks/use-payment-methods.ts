@@ -30,3 +30,9 @@ export const useUpdatePaymentMethod = () => {
     },
   });
 };
+
+export const useGetAllPaymentMethods = () =>
+  useQuery({
+    queryKey: [...QUERY_KEYS.paymentMethods, 'all'],
+    queryFn: pmApi.getAllPaymentMethods,
+  });

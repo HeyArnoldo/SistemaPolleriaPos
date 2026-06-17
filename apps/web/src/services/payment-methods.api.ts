@@ -15,6 +15,12 @@ export const createPaymentMethod = async (payload: {
   return data;
 };
 
+export const getAllPaymentMethods = async (): Promise<PaymentMethod[]> => {
+  // Alias of getPaymentMethods — backend returns all methods at this endpoint
+  const { data } = await api.get('/sales/payment-methods');
+  return data;
+};
+
 export const updatePaymentMethod = async (
   id: number,
   payload: Partial<{

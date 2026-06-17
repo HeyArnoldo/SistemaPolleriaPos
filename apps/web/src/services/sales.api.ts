@@ -27,6 +27,14 @@ export const syncSales = async (payload: { sales: CreateSaleDTO[] }): Promise<Sy
   return data;
 };
 
+export const resetSalesAll = async (): Promise<void> => {
+  await api.delete('/sales/reset/all');
+};
+
+export const resetSalesByDate = async (date: string): Promise<void> => {
+  await api.delete(`/sales/reset/date/${date}`);
+};
+
 export const exportCashReport = async (params: {
   startDate: string;
   endDate: string;
