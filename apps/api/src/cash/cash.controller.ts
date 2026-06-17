@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -33,8 +43,15 @@ export class CashController {
   }
 
   @Get('expenses')
-  findExpenses(@Query('from') from: string, @Query('to') to: string) {
-    return this.cashService.findAll({ from, to });
+  findExpenses(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+    // Map frontend param names (startDate/endDate) to service filter (from/to).
+    // Guard against missing params: pass undefined so findAll returns all records.
+    return this.cashService.findAll({ from: startDate, to: endDate });
+  }
+
+  @Delete('expenses/:id')
+  deleteExpense(@Param('id', ParseIntPipe) id: number) {
+    return this.cashService.deleteExpense(id);
   }
 
   @Get('dashboard')
