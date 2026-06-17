@@ -1,49 +1,77 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { useGetCashDashboard, useGetExpenses, useDeleteExpense } from '@/hooks/use-cash';
 import { useGetSales, useCancelSale } from '@/hooks/use-sales';
 import { useMe } from '@/hooks/use-auth';
 import { canAccessRoute } from '@/lib/permissions';
-import { DayGroup } from '@/components/dashboard/caja/day-group';
-import { CancelSaleDialog } from '@/components/dashboard/caja/cancel-sale-dialog';
-import { CashReportCard } from '@/components/dashboard/caja/cash-report-card';
-import { groupSalesByDate } from '@/lib/caja';
 import { getErrorMessage } from '@/lib/errors';
-import type { Sale } from '@/types/models';
+import { CajaHeader } from '@/components/dashboard/caja/caja-header';
+import { CajaSummaryCards } from '@/components/dashboard/caja/caja-summary-cards';
+import { CajaMethodsTable } from '@/components/dashboard/caja/caja-methods-table';
+import { CajaSalesSection } from '@/components/dashboard/caja/caja-sales-section';
+import { CajaExpensesSection } from '@/components/dashboard/caja/caja-expenses-section';
+import { CashReportCard } from '@/components/dashboard/caja/cash-report-card';
+
+function getTodayLima(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+}
+
+function getDayRange(date: string): { from: string; to: string } {
+  return {
+    from: `${date}T00:00:00`,
+    to: `${date}T23:59:59`,
+  };
+}
 
 export default function CajaPage() {
-  const { data: sales = [], isLoading, isError } = useGetSales();
-  const { mutate: cancelSale, isPending: isCancelling } = useCancelSale();
-  const { data: user } = useMe();
-  const canCancel = canAccessRoute(user?.role, 'caja');
-
-  const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
-  const [filterDate, setFilterDate] = useState<string>(() =>
-    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }),
-  );
+  const [filterDate, setFilterDate] = useState<string>(getTodayLima());
   const [showAll, setShowAll] = useState(false);
 
-  const filteredSales = showAll
-    ? sales
-    : sales.filter((s) => {
-        const d = new Date(s.createdAt).toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
-        return d === filterDate;
-      });
+  const { data: user } = useMe();
+  const isAdmin = canAccessRoute(user?.role, 'caja');
 
-  const grouped = groupSalesByDate(filteredSales);
+  // Dashboard summary — always uses filterDate (per-day)
+  const {
+    data: dashboard,
+    isLoading: dashboardLoading,
+    isError: dashboardError,
+    isFetching: dashboardFetching,
+    refetch: dashboardRefetch,
+    dataUpdatedAt,
+  } = useGetCashDashboard(filterDate);
 
-  const handleCancelConfirm = (saleId: number, reason: string) => {
+  // Sales — date-filtered when showAll is false
+  const { from, to } = getDayRange(filterDate);
+  const salesFilter = showAll ? { limit: 500 } : { from, to, limit: 500 };
+
+  const {
+    data: sales = [],
+    isLoading: salesLoading,
+    isError: salesError,
+  } = useGetSales(salesFilter);
+
+  // Expenses — always filtered to the selected day
+  const {
+    data: expenses = [],
+    isLoading: expensesLoading,
+    isError: expensesError,
+  } = useGetExpenses({ startDate: from, endDate: to });
+
+  const { mutate: cancelSale, isPending: isCancelling } = useCancelSale();
+  const { mutate: deleteExpense, isPending: isDeletingExpense } = useDeleteExpense();
+
+  const handleCancelSale = (saleId: number, reason: string) => {
     cancelSale(
       { id: saleId, payload: { reason } },
       {
         onSuccess: () => {
           toast.success('Venta anulada');
-          setSaleToCancel(null);
         },
         onError: (err) => {
           toast.error(getErrorMessage(err, 'Error al anular la venta'));
@@ -52,66 +80,113 @@ export default function CajaPage() {
     );
   };
 
+  const handleDeleteExpense = (id: number) => {
+    deleteExpense(id, {
+      onSuccess: () => {
+        toast.success('Egreso eliminado');
+      },
+      onError: (err) => {
+        toast.error(getErrorMessage(err, 'Error al eliminar el egreso'));
+      },
+    });
+  };
+
+  const handleRefresh = () => {
+    void dashboardRefetch();
+  };
+
+  const isLoading = dashboardLoading || salesLoading || expensesLoading;
+
   return (
-    <div className="p-4 space-y-4 max-w-4xl">
-      <h1 className="text-xl font-semibold">Caja</h1>
+    <div className="p-4 space-y-4 max-w-5xl">
+      <CajaHeader
+        dataUpdatedAt={dataUpdatedAt}
+        isFetching={dashboardFetching}
+        onRefresh={handleRefresh}
+        isAdmin={isAdmin}
+      />
 
       <Tabs defaultValue="historial">
         <TabsList>
-          <TabsTrigger value="historial">Historial de ventas</TabsTrigger>
+          <TabsTrigger value="historial">Historial</TabsTrigger>
           <TabsTrigger value="reportes">Reportes</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="historial" className="mt-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Input
-              type="date"
-              value={showAll ? '' : filterDate}
-              onChange={(e) => {
-                setFilterDate(e.target.value);
-                setShowAll(false);
-              }}
-              className="w-36 text-sm"
-              disabled={showAll}
-            />
+        <TabsContent value="historial" className="space-y-4 mt-4">
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="filterDate" className="text-sm">
+                Fecha
+              </Label>
+              <Input
+                id="filterDate"
+                type="date"
+                value={filterDate}
+                onChange={(e) => {
+                  setFilterDate(e.target.value);
+                  setShowAll(false);
+                }}
+                className="w-40 text-sm"
+                disabled={showAll}
+              />
+            </div>
             <Button
               variant={showAll ? 'default' : 'outline'}
               size="sm"
               onClick={() => setShowAll((v) => !v)}
             >
-              {showAll ? 'Filtrar por día' : 'Ver todo'}
+              {showAll ? 'Filtrar por dia' : 'Ver todo'}
             </Button>
+            {showAll && (
+              <p className="text-xs text-muted-foreground">
+                Mostrando todas las ventas. El resumen del dia refleja la fecha seleccionada.
+              </p>
+            )}
           </div>
 
-          {isError && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>Error al cargar las ventas. Intenta nuevamente.</AlertDescription>
+          {/* Loading */}
+          {isLoading && (
+            <div className="space-y-4">
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-40 w-full" />
+            </div>
+          )}
+
+          {/* Errors */}
+          {(dashboardError || salesError || expensesError) && !isLoading && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                Error al cargar los datos de caja. Intente nuevamente.
+              </AlertDescription>
             </Alert>
           )}
 
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : Object.keys(grouped).length === 0 ? (
-            <p className="text-center text-muted-foreground py-8 text-sm">
-              No hay ventas registradas
-            </p>
-          ) : (
-            <div>
-              {Object.entries(grouped).map(([dateStr, daySales]) => (
-                <DayGroup
-                  key={dateStr}
-                  dateStr={dateStr}
-                  sales={daySales}
-                  onCancelSale={setSaleToCancel}
-                  canCancel={canCancel}
-                />
-              ))}
-            </div>
+          {/* Dashboard summary — always per filterDate */}
+          {!dashboardLoading && dashboard && (
+            <>
+              <CajaSummaryCards totals={dashboard.totals} />
+              <CajaMethodsTable summary={dashboard.summary} />
+            </>
+          )}
+
+          {/* Sales section */}
+          {!salesLoading && (
+            <CajaSalesSection
+              sales={sales}
+              isAdmin={isAdmin}
+              onCancelSale={handleCancelSale}
+              isCancelling={isCancelling}
+            />
+          )}
+
+          {/* Expenses section — admin only */}
+          {isAdmin && !expensesLoading && (
+            <CajaExpensesSection
+              expenses={expenses}
+              onDeleteExpense={handleDeleteExpense}
+              isDeleting={isDeletingExpense}
+            />
           )}
         </TabsContent>
 
@@ -121,14 +196,6 @@ export default function CajaPage() {
           </div>
         </TabsContent>
       </Tabs>
-
-      <CancelSaleDialog
-        sale={saleToCancel}
-        open={!!saleToCancel}
-        onOpenChange={(v) => !v && setSaleToCancel(null)}
-        onConfirm={handleCancelConfirm}
-        isLoading={isCancelling}
-      />
     </div>
   );
 }

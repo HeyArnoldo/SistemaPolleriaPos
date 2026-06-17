@@ -1,10 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as salesApi from '@/services/sales.api';
+import type { GetSalesFilter } from '@/services/sales.api';
 import { QUERY_KEYS } from './query-keys';
 import type { CancelSaleDTO, CreateSaleDTO } from '@/types/models';
 
-export const useGetSales = () =>
-  useQuery({ queryKey: QUERY_KEYS.sales, queryFn: salesApi.getSales });
+export const useGetSales = (filter?: GetSalesFilter) =>
+  useQuery({
+    queryKey: [...QUERY_KEYS.sales, filter],
+    queryFn: () => salesApi.getSales(filter),
+  });
 
 export const useCreateSale = () => {
   const qc = useQueryClient();
