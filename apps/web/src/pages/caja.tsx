@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -98,7 +98,7 @@ export default function CajaPage() {
   const isLoading = dashboardLoading || salesLoading || expensesLoading;
 
   return (
-    <div className="p-4 space-y-4 max-w-5xl">
+    <div className="space-y-6">
       <CajaHeader
         dataUpdatedAt={dataUpdatedAt}
         isFetching={dashboardFetching}
@@ -112,11 +112,11 @@ export default function CajaPage() {
           <TabsTrigger value="reportes">Reportes</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="historial" className="space-y-4 mt-4">
+        <TabsContent value="historial" className="space-y-6 mt-4">
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
-              <Label htmlFor="filterDate" className="text-sm">
+              <Label htmlFor="filterDate" className="text-sm text-slate-600">
                 Fecha
               </Label>
               <Input
@@ -139,7 +139,7 @@ export default function CajaPage() {
               {showAll ? 'Filtrar por dia' : 'Ver todo'}
             </Button>
             {showAll && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-slate-500">
                 Mostrando todas las ventas. El resumen del dia refleja la fecha seleccionada.
               </p>
             )}
@@ -147,9 +147,9 @@ export default function CajaPage() {
 
           {/* Loading */}
           {isLoading && (
-            <div className="space-y-4">
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-40 w-full" />
+            <div className="flex items-center gap-2 rounded-lg border bg-white p-4 text-slate-600">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Cargando resumen de caja...
             </div>
           )}
 
@@ -165,8 +165,8 @@ export default function CajaPage() {
           {/* Dashboard summary — always per filterDate */}
           {!dashboardLoading && dashboard && (
             <>
-              <CajaSummaryCards totals={dashboard.totals} />
-              <CajaMethodsTable summary={dashboard.summary} />
+              <CajaSummaryCards totals={dashboard.totals} summary={dashboard.summary} />
+              <CajaMethodsTable summary={dashboard.summary} isFetching={dashboardFetching} />
             </>
           )}
 

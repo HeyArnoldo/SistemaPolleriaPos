@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -50,89 +50,100 @@ export function CajaExpensesSection({
     }
   };
 
-  if (expenses.length === 0) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Egresos del Dia</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-6">
-            No hay egresos registrados
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <>
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Egresos del Dia</CardTitle>
+      <Card className="border-slate-200/70 shadow-sm">
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Egresos</CardTitle>
+            <CardDescription>Solo administrador puede anular egresos desde aqui</CardDescription>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {dates.map((date) => {
-            const dateExpenses = grouped[date];
-            const total = getDayExpensesTotal(dateExpenses);
-            return (
-              <div key={date}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold">{formatDateLabel(date)}</p>
-                  <span className="text-xs font-semibold text-rose-600">
-                    {formatCurrency(total)}
-                  </span>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Descripcion</TableHead>
-                      <TableHead className="text-right">Monto</TableHead>
-                      <TableHead>Comprobante</TableHead>
-                      <TableHead>Metodo</TableHead>
-                      <TableHead>Hora</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dateExpenses.map((expense) => (
-                      <TableRow key={expense.id}>
-                        <TableCell className="text-sm">{expense.description}</TableCell>
-                        <TableCell className="text-right text-sm font-medium text-rose-600">
-                          {formatCurrency(Number(expense.amount))}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {expense.receiptNumber ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-sm">{getExpensePaymentName(expense)}</TableCell>
-                        <TableCell className="text-sm">{formatTime(expense.createdAt)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-rose-500 hover:text-rose-600"
-                            onClick={() => handleDeleteClick(expense)}
-                            title="Eliminar egreso"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            );
-          })}
+        <CardContent>
+          {expenses.length === 0 ? (
+            <div className="rounded-md border">
+              <Table>
+                <TableBody>
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      No hay egresos registrados.
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {dates.map((date) => {
+                const dateExpenses = grouped[date];
+                const total = getDayExpensesTotal(dateExpenses);
+                return (
+                  <div key={date} className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <h3 className="text-sm font-semibold text-slate-700">
+                        {formatDateLabel(date)}
+                      </h3>
+                      <span className="text-sm font-medium text-red-600">
+                        Total: {formatCurrency(total)}
+                      </span>
+                    </div>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Descripcion</TableHead>
+                            <TableHead>Monto</TableHead>
+                            <TableHead>Comprobante</TableHead>
+                            <TableHead>Metodo</TableHead>
+                            <TableHead>Hora</TableHead>
+                            <TableHead className="text-right">Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {dateExpenses.map((expense) => (
+                            <TableRow key={expense.id}>
+                              <TableCell className="font-medium text-slate-900">
+                                {expense.description}
+                              </TableCell>
+                              <TableCell className="font-semibold text-red-600">
+                                {formatCurrency(Number(expense.amount ?? 0))}
+                              </TableCell>
+                              <TableCell className="text-slate-600">
+                                {expense.receiptNumber ?? '-'}
+                              </TableCell>
+                              <TableCell>{getExpensePaymentName(expense)}</TableCell>
+                              <TableCell>{formatTime(expense.createdAt)}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600"
+                                  onClick={() => handleDeleteClick(expense)}
+                                  disabled={isDeleting}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Anular
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
       <DeleteConfirmDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
-        title="Eliminar egreso"
-        description={`Confirmas la eliminacion del egreso "${expenseToDelete?.description}"? Esta accion no se puede deshacer.`}
-        confirmLabel="Eliminar"
+        title="Anular egreso"
+        description={`Confirmas la anulacion del egreso "${expenseToDelete?.description}"? Esta accion no se puede deshacer.`}
+        confirmLabel="Anular"
         onConfirm={handleConfirmDelete}
         isLoading={isDeleting}
       />

@@ -51,7 +51,7 @@ export function CashReportCard() {
   };
 
   return (
-    <Card>
+    <Card className="border-slate-200/70 shadow-sm">
       <CardHeader>
         <CardTitle className="text-base">Reporte de caja</CardTitle>
       </CardHeader>
