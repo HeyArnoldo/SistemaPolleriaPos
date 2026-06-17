@@ -34,9 +34,11 @@ services:
       AUTH_LOCAL_ENABLED: ${AUTH_LOCAL_ENABLED:-true}
       JWT_SECRET: ${JWT_SECRET:-cambiame_por_un_secreto_largo}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin1234!}
-      ADMIN_NAME: ${ADMIN_NAME:-Admin}
     ports:
       - '3000:3000'
     depends_on:
