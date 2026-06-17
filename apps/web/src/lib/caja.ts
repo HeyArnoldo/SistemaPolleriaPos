@@ -59,7 +59,9 @@ export const getExpensePaymentName = (expense: Expense): string => {
 export const groupExpensesByDate = (expenses: Expense[]): Record<string, Expense[]> => {
   const groups: Record<string, Expense[]> = {};
   for (const expense of expenses) {
-    const date = expense.createdAt.slice(0, 10);
+    const date = new Date(expense.createdAt).toLocaleDateString('en-CA', {
+      timeZone: 'America/Lima',
+    });
     if (!groups[date]) groups[date] = [];
     groups[date].push(expense);
   }
@@ -73,7 +75,7 @@ export const groupExpensesByDate = (expenses: Expense[]): Record<string, Expense
 export const groupSalesByDate = (sales: Sale[]): Record<string, Sale[]> => {
   const groups: Record<string, Sale[]> = {};
   for (const sale of sales) {
-    const date = sale.createdAt.slice(0, 10);
+    const date = new Date(sale.createdAt).toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
     if (!groups[date]) groups[date] = [];
     groups[date].push(sale);
   }
@@ -120,7 +122,7 @@ export const getDayTotals = (
       total += getSaleTotal(sale);
     }
   }
-  return { count: sales.length, total, cancelledCount };
+  return { count: sales.length - cancelledCount, total, cancelledCount };
 };
 
 export const getDayExpensesTotal = (expenses: Expense[]): number => {

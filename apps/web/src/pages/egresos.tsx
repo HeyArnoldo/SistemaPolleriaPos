@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trash2, Plus } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Trash2, Plus, AlertCircle } from 'lucide-react';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useGetExpenses, useCreateExpense, useDeleteExpense } from '@/hooks/use-cash';
 import { useGetPaymentMethods } from '@/hooks/use-payment-methods';
@@ -37,7 +38,15 @@ interface ExpenseFormValues {
 }
 
 export default function EgresosPage() {
-  const { data: expenses = [], isLoading } = useGetExpenses();
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+  const [dateFilter, setDateFilter] = useState<string>(today);
+  const [showAll, setShowAll] = useState(false);
+
+  const {
+    data: expenses = [],
+    isLoading,
+    isError,
+  } = useGetExpenses(showAll ? undefined : { startDate: dateFilter, endDate: dateFilter });
   const { data: paymentMethods = [] } = useGetPaymentMethods();
   const { mutate: createExpense, isPending: isCreating } = useCreateExpense();
   const { mutate: deleteExpense, isPending: isDeleting } = useDeleteExpense();
@@ -58,6 +67,15 @@ export default function EgresosPage() {
   const paymentMethodId = watch('paymentMethodId');
 
   const onSubmit = async (values: ExpenseFormValues) => {
+    if (!values.paymentMethodId) {
+      toast.error('Selecciona un método de pago');
+      return;
+    }
+    const parsedAmount = parseFloat(values.amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast.error('El monto debe ser mayor a 0');
+      return;
+    }
     const payload = {
       description: values.description.trim(),
       amount: parseFloat(values.amount),
@@ -110,6 +128,33 @@ export default function EgresosPage() {
         </Button>
       </div>
 
+      <div className="flex items-center gap-2">
+        <Input
+          type="date"
+          value={showAll ? '' : dateFilter}
+          onChange={(e) => {
+            setDateFilter(e.target.value);
+            setShowAll(false);
+          }}
+          className="w-36 text-sm"
+          disabled={showAll}
+        />
+        <Button
+          variant={showAll ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setShowAll((v) => !v)}
+        >
+          {showAll ? 'Filtrar por día' : 'Ver todo'}
+        </Button>
+      </div>
+
+      {isError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>Error al cargar los egresos. Intenta nuevamente.</AlertDescription>
+        </Alert>
+      )}
+
       {showForm && (
         <Card>
           <CardHeader>
@@ -137,7 +182,10 @@ export default function EgresosPage() {
                     type="number"
                     min="0"
                     step="0.01"
-                    {...register('amount', { required: 'El monto es requerido' })}
+                    {...register('amount', {
+                      required: 'El monto es requerido',
+                      min: { value: 0.01, message: 'El monto debe ser mayor a 0' },
+                    })}
                     placeholder="0.00"
                   />
                   {errors.amount && (

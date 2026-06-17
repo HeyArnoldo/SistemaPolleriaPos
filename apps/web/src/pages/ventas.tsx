@@ -14,6 +14,7 @@ import { useConnectivity } from '@/hooks/use-connectivity';
 import { ProductGrid } from '@/components/dashboard/ventas/product-grid';
 import { CartItemRow } from '@/components/dashboard/ventas/cart-item-row';
 import { PaymentForm } from '@/components/dashboard/ventas/payment-form';
+import { Textarea } from '@/components/ui/textarea';
 import { formatCurrency, formatDateTime } from '@/lib/formatting';
 import type { Sale } from '@/types/models';
 import { generateSaleNumber } from '@/lib/ventas';
@@ -190,6 +191,14 @@ export default function VentasPage() {
                   onUpdateAmount={(i, v) => updatePayment(i, { amount: v })}
                   onUpdateMethod={setPaymentMethodForLine}
                   onUpdateTransferTime={(i, v) => updatePayment(i, { transferTime: v })}
+                />
+
+                <Textarea
+                  placeholder="Notas (opcional)"
+                  value={notesInput}
+                  onChange={(e) => setNotesInput(e.target.value)}
+                  className="resize-none text-sm mt-2"
+                  rows={2}
                 />
 
                 <div className="mt-3 space-y-2">

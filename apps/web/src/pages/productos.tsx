@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, FolderOpen } from 'lucide-react';
-import { useGetProducts } from '@/hooks/use-products';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Plus, FolderOpen, AlertCircle } from 'lucide-react';
+import { useGetProducts, useGetCategories } from '@/hooks/use-products';
 import { useMe } from '@/hooks/use-auth';
 import { canAccessAction } from '@/lib/permissions';
 import { ProductosTable } from '@/components/dashboard/productos/table/productos-table';
@@ -12,7 +13,8 @@ import type { Product } from '@/types/models';
 
 export default function ProductosPage() {
   const { data: user } = useMe();
-  const { data: products = [], isLoading } = useGetProducts();
+  const { data: products = [], isLoading, isError } = useGetProducts();
+  const { data: categories = [] } = useGetCategories();
   const canWrite = canAccessAction(user?.role, 'products:write');
 
   const [productDialogOpen, setProductDialogOpen] = useState(false);
@@ -47,6 +49,13 @@ export default function ProductosPage() {
         )}
       </div>
 
+      {isError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>Error al cargar los productos. Intenta nuevamente.</AlertDescription>
+        </Alert>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -54,7 +63,12 @@ export default function ProductosPage() {
           ))}
         </div>
       ) : (
-        <ProductosTable products={products} onEdit={handleEditProduct} canWrite={canWrite} />
+        <ProductosTable
+          products={products}
+          categories={categories}
+          onEdit={handleEditProduct}
+          canWrite={canWrite}
+        />
       )}
 
       <ProductFormDialog

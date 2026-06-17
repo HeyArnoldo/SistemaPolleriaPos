@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
 import { useGetSales, useCancelSale } from '@/hooks/use-sales';
+import { useMe } from '@/hooks/use-auth';
+import { canAccessRoute } from '@/lib/permissions';
 import { DayGroup } from '@/components/dashboard/caja/day-group';
 import { CancelSaleDialog } from '@/components/dashboard/caja/cancel-sale-dialog';
 import { CashReportCard } from '@/components/dashboard/caja/cash-report-card';
@@ -11,12 +17,25 @@ import { getErrorMessage } from '@/lib/errors';
 import type { Sale } from '@/types/models';
 
 export default function CajaPage() {
-  const { data: sales = [], isLoading } = useGetSales();
+  const { data: sales = [], isLoading, isError } = useGetSales();
   const { mutate: cancelSale, isPending: isCancelling } = useCancelSale();
+  const { data: user } = useMe();
+  const canCancel = canAccessRoute(user?.role, 'caja');
 
   const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
+  const [filterDate, setFilterDate] = useState<string>(() =>
+    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' }),
+  );
+  const [showAll, setShowAll] = useState(false);
 
-  const grouped = groupSalesByDate(sales);
+  const filteredSales = showAll
+    ? sales
+    : sales.filter((s) => {
+        const d = new Date(s.createdAt).toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+        return d === filterDate;
+      });
+
+  const grouped = groupSalesByDate(filteredSales);
 
   const handleCancelConfirm = (saleId: number, reason: string) => {
     cancelSale(
@@ -44,6 +63,33 @@ export default function CajaPage() {
         </TabsList>
 
         <TabsContent value="historial" className="mt-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Input
+              type="date"
+              value={showAll ? '' : filterDate}
+              onChange={(e) => {
+                setFilterDate(e.target.value);
+                setShowAll(false);
+              }}
+              className="w-36 text-sm"
+              disabled={showAll}
+            />
+            <Button
+              variant={showAll ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowAll((v) => !v)}
+            >
+              {showAll ? 'Filtrar por día' : 'Ver todo'}
+            </Button>
+          </div>
+
+          {isError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>Error al cargar las ventas. Intenta nuevamente.</AlertDescription>
+            </Alert>
+          )}
+
           {isLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
@@ -62,7 +108,7 @@ export default function CajaPage() {
                   dateStr={dateStr}
                   sales={daySales}
                   onCancelSale={setSaleToCancel}
-                  canCancel={true}
+                  canCancel={canCancel}
                 />
               ))}
             </div>

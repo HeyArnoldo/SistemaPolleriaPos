@@ -64,3 +64,13 @@ export const useUpdateCategory = () => {
     },
   });
 };
+
+export const useReactivateProduct = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => productsApi.reactivateProduct(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.products });
+    },
+  });
+};

@@ -57,3 +57,7 @@ export const updateCategory = async (
   const { data } = await api.patch(`/inventory/categories/${id}`, payload);
   return data;
 };
+
+export const reactivateProduct = async (id: number): Promise<void> => {
+  await api.patch(`/inventory/products/${id}`, { isActive: true });
+};

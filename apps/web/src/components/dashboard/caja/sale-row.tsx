@@ -70,8 +70,11 @@ export function SaleRow({ sale, onCancel, canCancel }: SaleRowProps) {
 
       {expanded && (
         <div className="mt-3 pt-3 border-t space-y-1">
-          {sale.items?.map((item, i) => (
-            <div key={i} className="flex justify-between text-xs text-muted-foreground">
+          {sale.items?.map((item) => (
+            <div
+              key={item.productId}
+              className="flex justify-between text-xs text-muted-foreground"
+            >
               <span>
                 {item.product?.name ?? `Producto #${item.productId}`} x{item.quantity}
               </span>
