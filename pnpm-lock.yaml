@@ -187,6 +187,9 @@ importers:
       axios:
         specifier: ^1.12.0
         version: 1.17.0
+      bcryptjs:
+        specifier: ^3.0.3
+        version: 3.0.3
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
