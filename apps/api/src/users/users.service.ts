@@ -16,6 +16,7 @@ export interface CreateUserDto {
 
 export interface UpdateUserDto {
   username?: string;
+  passwordHash?: string;
   isActive?: boolean;
   role?: Role;
   firstName?: string;
@@ -45,18 +46,32 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto): Promise<User> {
-    const profile = this.profileRepo.create({
-      firstName: dto.firstName,
-      lastName: dto.lastName,
-      avatarUrl: dto.avatarUrl ?? null,
+    const profile = await this.profileRepo.save(
+      this.profileRepo.create({
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        avatarUrl: dto.avatarUrl ?? null,
+      }),
+    );
+    // Use createQueryBuilder to bypass the @BeforeInsert hook that would double-hash the password
+    await this.userRepo
+      .createQueryBuilder()
+      .insert()
+      .into(User)
+      .values({
+        username: dto.username,
+        passwordHash: dto.passwordHash,
+        role: dto.role ?? Role.Cashier,
+        isActive: true,
+        profile,
+      })
+      .execute();
+    const created = await this.userRepo.findOne({
+      where: { username: dto.username },
+      relations: ['profile'],
     });
-    const user = this.userRepo.create({
-      username: dto.username,
-      passwordHash: dto.passwordHash,
-      role: dto.role ?? Role.Cashier,
-      profile,
-    });
-    return this.userRepo.save(user);
+    if (!created) throw new NotFoundException(`User '${dto.username}' not found after creation`);
+    return created;
   }
 
   async findAll(): Promise<User[]> {
@@ -68,9 +83,11 @@ export class UsersService {
     if (dto.username !== undefined) user.username = dto.username;
     if (dto.isActive !== undefined) user.isActive = dto.isActive;
     if (dto.role !== undefined) user.role = dto.role;
+    if (dto.passwordHash !== undefined) user.passwordHash = dto.passwordHash;
     if (dto.firstName !== undefined) user.profile.firstName = dto.firstName;
     if (dto.lastName !== undefined) user.profile.lastName = dto.lastName;
     if (dto.avatarUrl !== undefined) user.profile.avatarUrl = dto.avatarUrl;
+    // @BeforeInsert only fires on INSERT — UPDATE path is safe from double-hashing
     return this.userRepo.save(user);
   }
 
