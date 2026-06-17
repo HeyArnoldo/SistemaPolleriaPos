@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Plus, AlertCircle } from 'lucide-react';
 import { useGetUsers } from '@/hooks/use-users';
 import { useMe } from '@/hooks/use-auth';
 import { canAccessAction } from '@/lib/permissions';
@@ -11,7 +12,7 @@ import type { User } from '@/types/models';
 
 export default function UsuariosPage() {
   const { data: user } = useMe();
-  const { data: users = [], isLoading } = useGetUsers();
+  const { data: users = [], isLoading, isError } = useGetUsers();
   const canWrite = canAccessAction(user?.role, 'users:write');
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -38,6 +39,13 @@ export default function UsuariosPage() {
           </Button>
         )}
       </div>
+
+      {isError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>Error al cargar los usuarios. Intenta nuevamente.</AlertDescription>
+        </Alert>
+      )}
 
       {isLoading ? (
         <div className="space-y-2">

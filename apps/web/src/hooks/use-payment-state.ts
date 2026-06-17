@@ -23,7 +23,10 @@ export function usePaymentState({ total, paymentMethods }: UsePaymentStateProps)
   }, []);
 
   const removePaymentLine = useCallback((index: number) => {
-    setPayments((prev) => prev.filter((_, i) => i !== index));
+    setPayments((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
   }, []);
 
   const updatePayment = useCallback((index: number, patch: Partial<PaymentEntry>) => {

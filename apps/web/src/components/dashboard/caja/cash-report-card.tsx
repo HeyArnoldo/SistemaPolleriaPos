@@ -97,7 +97,7 @@ export function CashReportCard() {
         <Button
           className="w-full"
           onClick={handleExport}
-          disabled={isPending || (preset === 'custom' && !customRange?.from)}
+          disabled={isPending || (preset === 'custom' && (!customRange?.from || !customRange?.to))}
         >
           {isPending ? (
             <>
