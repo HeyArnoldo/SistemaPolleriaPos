@@ -9,3 +9,4 @@ allowBuilds:
   esbuild: true
   "@tailwindcss/oxide": true
   unrs-resolver: true
+  electron: true

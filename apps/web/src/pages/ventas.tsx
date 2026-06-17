@@ -14,11 +14,43 @@ import { useConnectivity } from '@/hooks/use-connectivity';
 import { ProductGrid } from '@/components/dashboard/ventas/product-grid';
 import { CartItemRow } from '@/components/dashboard/ventas/cart-item-row';
 import { PaymentForm } from '@/components/dashboard/ventas/payment-form';
-import { formatCurrency } from '@/lib/formatting';
+import { formatCurrency, formatDateTime } from '@/lib/formatting';
+import type { Sale } from '@/types/models';
 import { generateSaleNumber } from '@/lib/ventas';
 import { parseMoney } from '@/lib/ventas';
 import { getErrorMessage } from '@/lib/errors';
 import { enqueueSale } from '@/lib/queue-manager';
+
+function buildTicketHtml(sale: Sale): string {
+  const items = sale.items
+    .map(
+      (i) =>
+        `<tr><td>${i.product?.name ?? 'Producto'}</td><td>${i.quantity}</td><td>${formatCurrency(Number(i.unitPrice) * i.quantity)}</td></tr>`,
+    )
+    .join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body { font-family: monospace; font-size: 12px; width: 80mm; margin: 0 auto; }
+  h2 { text-align: center; margin: 4px 0; font-size: 14px; }
+  p { margin: 2px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  th, td { text-align: left; padding: 2px 0; }
+  th:last-child, td:last-child { text-align: right; }
+  .total { font-size: 14px; font-weight: bold; border-top: 1px dashed #000; padding-top: 4px; }
+  @media print { body { -webkit-print-color-adjust: exact; } }
+</style>
+</head><body>
+<h2>Pollería Carbón</h2>
+<p>Ticket: ${sale.saleNumber ?? ''}</p>
+<p>Fecha: ${formatDateTime(sale.createdAt)}</p>
+<table>
+  <thead><tr><th>Producto</th><th>Cant</th><th>Total</th></tr></thead>
+  <tbody>${items}</tbody>
+</table>
+<p class="total">TOTAL: ${formatCurrency(sale.totalAmount)}</p>
+</body></html>`;
+}
 
 export default function VentasPage() {
   const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
@@ -77,8 +109,11 @@ export default function VentasPage() {
     }
 
     createSale(salePayload, {
-      onSuccess: () => {
+      onSuccess: (sale) => {
         toast.success('Venta registrada correctamente');
+        if (window.electronAPI) {
+          void window.electronAPI.printTicket(buildTicketHtml(sale));
+        }
         clearCart();
         resetPayments();
         setNotesInput('');

@@ -183,3 +183,12 @@ export interface StoreSetting {
   createdAt: string;
   updatedAt: string;
 }
+
+// Electron IPC bridge — defined only when running inside the desktop app
+declare global {
+  interface Window {
+    electronAPI?: {
+      printTicket: (htmlContent: string) => Promise<void>;
+    };
+  }
+}
