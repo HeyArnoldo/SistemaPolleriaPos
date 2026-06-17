@@ -7,8 +7,7 @@ import { Payment } from '../entities/payment.entity';
 import { PaymentMethod } from '../entities/payment-method.entity';
 import { Product } from '../../inventory/entities/product.entity';
 import { User } from '../../users/user.entity';
-import { CreateSaleDto } from '../dto/create-sale.dto';
-import { SyncSalesDto } from '../dto/sync-sales.dto';
+import { CreateSaleDto, SyncSalesDto } from '../dto/create-sale.dto';
 
 export interface SalesFilter {
   from?: string;
@@ -29,19 +28,30 @@ export class SalesService {
   ) {}
 
   async createSale(dto: CreateSaleDto, user: User): Promise<Sale> {
-    const existing = await this.saleRepo.findOne({ where: { saleNumber: dto.saleNumber } });
-    if (existing) throw new ConflictException(`Sale number "${dto.saleNumber}" already exists`);
+    if (dto.saleNumber) {
+      const existing = await this.saleRepo.findOne({ where: { saleNumber: dto.saleNumber } });
+      if (existing) throw new ConflictException(`Sale number "${dto.saleNumber}" already exists`);
+    }
+
+    // Compute totals from items
+    const subtotal = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    const totalAmount = subtotal;
+
+    // Generate saleNumber if not provided
+    const saleNumber =
+      dto.saleNumber ??
+      `SALE-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
     const sale = this.saleRepo.create({
-      saleNumber: dto.saleNumber,
+      saleNumber,
       user,
-      subtotal: dto.subtotal,
-      taxAmount: dto.taxAmount ?? 0,
-      totalAmount: dto.totalAmount,
-      paymentStatus: dto.paymentStatus ?? 'paid',
+      subtotal,
+      taxAmount: 0,
+      totalAmount,
+      paymentStatus: 'paid',
       notes: dto.notes ?? null,
       isCanceled: false,
-      ...(dto.createdAt ? { createdAt: new Date(dto.createdAt) } : {}),
+      ...(dto.createdAt ? { createdAt: dto.createdAt } : {}),
     });
 
     // Build items
@@ -86,14 +96,16 @@ export class SalesService {
     return this.saleRepo.save(sale);
   }
 
-  async syncSales(dtos: SyncSalesDto, user: User): Promise<{ created: number; skipped: number }> {
+  async syncSales(input: SyncSalesDto, user: User): Promise<{ created: number; skipped: number }> {
     let created = 0;
     let skipped = 0;
-    for (const dto of dtos) {
-      const existing = await this.saleRepo.findOne({ where: { saleNumber: dto.saleNumber } });
-      if (existing) {
-        skipped++;
-        continue;
+    for (const dto of input.sales) {
+      if (dto.saleNumber) {
+        const existing = await this.saleRepo.findOne({ where: { saleNumber: dto.saleNumber } });
+        if (existing) {
+          skipped++;
+          continue;
+        }
       }
       await this.createSale(dto, user);
       created++;

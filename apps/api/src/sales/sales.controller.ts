@@ -9,18 +9,18 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { z } from 'zod';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { User } from '../users/user.entity';
 import { SalesService } from './services/sales.service';
-import { createSaleSchema, CreateSaleDto } from './dto/create-sale.dto';
-import { syncSalesSchema, SyncSalesDto } from './dto/sync-sales.dto';
-
-const cancelSaleSchema = z.object({
-  reason: z.string().min(1).max(500),
-});
+import {
+  createSaleSchema,
+  syncSalesSchema,
+  cancelSaleSchema,
+  CreateSaleDto,
+  SyncSalesDto,
+} from './dto/create-sale.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('sales')
@@ -37,10 +37,10 @@ export class SalesController {
 
   @Post('sync')
   syncSales(
-    @Body(new ZodValidationPipe(syncSalesSchema)) dtos: SyncSalesDto,
+    @Body(new ZodValidationPipe(syncSalesSchema)) input: SyncSalesDto,
     @CurrentUser() user: User,
   ) {
-    return this.salesService.syncSales(dtos, user);
+    return this.salesService.syncSales(input, user);
   }
 
   @Get()

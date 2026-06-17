@@ -6,8 +6,8 @@ import { User } from '../users/user.entity';
 import { CashService } from './services/cash.service';
 import {
   createExpenseSchema,
-  CreateExpenseDto,
   syncExpensesSchema,
+  CreateExpenseDto,
   SyncExpensesDto,
 } from './dto/create-expense.dto';
 
@@ -26,10 +26,10 @@ export class CashController {
 
   @Post('expenses/sync')
   syncExpenses(
-    @Body(new ZodValidationPipe(syncExpensesSchema)) dtos: SyncExpensesDto,
+    @Body(new ZodValidationPipe(syncExpensesSchema)) input: SyncExpensesDto,
     @CurrentUser() user: User,
   ) {
-    return this.cashService.syncExpenses(dtos, user);
+    return this.cashService.syncExpenses(input, user);
   }
 
   @Get('expenses')

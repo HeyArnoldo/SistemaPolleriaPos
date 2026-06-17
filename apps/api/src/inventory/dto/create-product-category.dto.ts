@@ -1,7 +1,10 @@
-import { z } from 'zod';
+export {
+  createCategorySchema,
+  createCategorySchema as createProductCategorySchema,
+  updateCategorySchema,
+} from '@app/contracts';
 
-export const createProductCategorySchema = z.object({
-  name: z.string().min(1).max(255),
-});
-
-export type CreateProductCategoryDto = z.infer<typeof createProductCategorySchema>;
+export type {
+  CreateCategoryInput as CreateProductCategoryDto,
+  UpdateCategoryInput as UpdateProductCategoryDto,
+} from '@app/contracts';

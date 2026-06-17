@@ -35,14 +35,14 @@ export class CashService {
       receiptNumber: dto.receiptNumber ?? null,
       paymentMethod: pm,
       createdBy,
-      ...(dto.createdAt ? { createdAt: new Date(dto.createdAt) } : {}),
+      ...(dto.createdAt ? { createdAt: dto.createdAt } : {}),
     });
     return this.expenseRepo.save(expense);
   }
 
-  async syncExpenses(dtos: SyncExpensesDto, createdBy: User): Promise<{ created: number }> {
+  async syncExpenses(input: SyncExpensesDto, createdBy: User): Promise<{ created: number }> {
     let created = 0;
-    for (const dto of dtos) {
+    for (const dto of input.expenses) {
       await this.createExpense(dto, createdBy);
       created++;
     }

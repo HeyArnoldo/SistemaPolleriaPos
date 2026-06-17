@@ -1,35 +1,25 @@
 import { z } from 'zod';
 
 export enum UserRole {
-  ADMIN = 'admin',
-  USER = 'user',
+  Admin = 'admin',
+  Cashier = 'cashier',
 }
 
-export const registerSchema = z.object({
-  email: z.email().max(160),
-  password: z.string().min(8).max(72),
-  name: z.string().min(1).max(120),
-});
-export type RegisterInput = z.infer<typeof registerSchema>;
-
 export const loginSchema = z.object({
-  email: z.email().max(160),
+  username: z.string().min(1).max(255),
   password: z.string().min(1),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
 export const authUserSchema = z.object({
-  id: z.uuid(),
-  email: z.email(),
-  name: z.string(),
-  avatarUrl: z.string().nullable(),
-  role: z.enum(UserRole),
-  createdAt: z.string(),
+  id: z.number().int().positive(),
+  username: z.string(),
+  role: z.nativeEnum(UserRole),
+  isActive: z.boolean(),
+  profile: z.object({
+    firstName: z.string(),
+    lastName: z.string(),
+    avatarUrl: z.string().nullable(),
+  }),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
-
-/** Respuesta de GET /api/auth/config — el login del frontend se renderiza según esto. */
-export interface AuthConfig {
-  localEnabled: boolean;
-  googleEnabled: boolean;
-}
