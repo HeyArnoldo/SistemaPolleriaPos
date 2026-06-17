@@ -7,13 +7,19 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from '../common/enums/role.enum';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { User } from '../users/user.entity';
 import { SalesService } from './services/sales.service';
+import { CashReportService } from './services/cash-report.service';
 import {
   createSaleSchema,
   syncSalesSchema,
@@ -25,7 +31,10 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller('sales')
 export class SalesController {
-  constructor(private readonly salesService: SalesService) {}
+  constructor(
+    private readonly salesService: SalesService,
+    private readonly cashReportService: CashReportService,
+  ) {}
 
   @Post()
   createSale(
@@ -58,6 +67,23 @@ export class SalesController {
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
+  }
+
+  @Get('export/cash-report')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  async exportCashReport(
+    @Query('startDate') startDate: string | undefined,
+    @Query('endDate') endDate: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { buffer, filename } = await this.cashReportService.exportCashReport(startDate, endDate);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(Buffer.from(buffer as ArrayBuffer));
   }
 
   @Get(':id')
