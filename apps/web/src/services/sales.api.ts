@@ -2,14 +2,31 @@ import { api } from '@/lib/api';
 import type { CancelSaleDTO, CreateSaleDTO, Sale } from '@/types/models';
 import type { SyncResult } from '@/types/offline';
 
+export interface GetSalesFilter {
+  from?: string;
+  to?: string;
+  userId?: number;
+  page?: number;
+  limit?: number;
+}
+
 export const createSale = async (payload: CreateSaleDTO): Promise<Sale> => {
   const { data } = await api.post('/sales', payload);
   return data;
 };
 
-export const getSales = async (): Promise<Sale[]> => {
-  const { data } = await api.get('/sales');
-  return data;
+export const getSales = async (filter?: GetSalesFilter): Promise<Sale[]> => {
+  const params = new URLSearchParams();
+  if (filter?.from) params.set('from', filter.from);
+  if (filter?.to) params.set('to', filter.to);
+  if (filter?.userId !== undefined) params.set('userId', String(filter.userId));
+  if (filter?.page !== undefined) params.set('page', String(filter.page));
+  if (filter?.limit !== undefined) params.set('limit', String(filter.limit));
+  const query = params.toString();
+  const { data } = await api.get<{ data: Sale[]; total: number }>(
+    `/sales${query ? `?${query}` : ''}`,
+  );
+  return data.data;
 };
 
 export const getSale = async (id: number): Promise<Sale> => {
