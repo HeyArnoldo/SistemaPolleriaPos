@@ -9,7 +9,7 @@ interface UseConnectivityOptions {
 }
 
 export function useConnectivity({ onReconnect }: UseConnectivityOptions = {}) {
-  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasOfflineRef = useRef(false);
   const onReconnectRef = useRef(onReconnect);

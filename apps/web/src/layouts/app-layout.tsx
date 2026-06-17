@@ -1,7 +1,9 @@
+import { useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   BarChart2,
   CreditCard,
+  KeyRound,
   LogOut,
   Package,
   Settings,
@@ -9,10 +11,13 @@ import {
   TrendingDown,
   User as UserIcon,
   Users,
+  WifiOff,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useLogout, useMe } from '@/hooks/use-auth';
 import { useConnectivity } from '@/hooks/use-connectivity';
 import { useSync } from '@/hooks/use-sync';
+import { useOfflineAuth } from '@/contexts/offline-auth-context';
 import { canAccessRoute } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SyncStatus } from '@/components/ui/sync-status';
+import { SetPinDialog } from '@/components/auth/set-pin-dialog';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   [
@@ -38,9 +44,24 @@ export function AppLayout() {
   const logout = useLogout();
   const navigate = useNavigate();
   const { syncNow, isSyncing, pendingCount } = useSync();
-  const { isOnline } = useConnectivity({ onReconnect: syncNow });
+  const { isOfflineMode, exitOfflineMode } = useOfflineAuth();
+  const isOfflineModeRef = useRef(isOfflineMode);
+  isOfflineModeRef.current = isOfflineMode;
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+
+  const { isOnline } = useConnectivity({
+    onReconnect: () => {
+      syncNow();
+      if (isOfflineModeRef.current) {
+        exitOfflineMode();
+        navigate('/login');
+        toast.info('Conexión restaurada — iniciá sesión nuevamente');
+      }
+    },
+  });
 
   const isAdmin = canAccessRoute(user?.role, 'dashboard');
+  const effectiveIsAdmin = isAdmin && !isOfflineMode;
 
   const handleLogout = () => {
     logout.mutate(undefined, { onSuccess: () => navigate('/login') });
@@ -52,6 +73,12 @@ export function AppLayout() {
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
           <span className="font-semibold">Pollería Carbón</span>
           <div className="flex items-center gap-2">
+            {isOfflineMode && (
+              <span className="flex items-center gap-1 text-xs text-amber-600 font-medium">
+                <WifiOff className="h-3 w-3" />
+                Sin conexión
+              </span>
+            )}
             <SyncStatus
               isOnline={isOnline}
               pendingCount={pendingCount}
@@ -62,7 +89,7 @@ export function AppLayout() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-2">
                   <UserIcon className="size-4" />
-                  {user?.profile.firstName}
+                  {user?.profile?.firstName}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -70,6 +97,15 @@ export function AppLayout() {
                   {user?.username}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {!isOfflineMode && (
+                  <>
+                    <DropdownMenuItem onClick={() => setPinDialogOpen(true)}>
+                      <KeyRound className="size-4" />
+                      Configurar PIN sin conexión
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="size-4" />
                   Cerrar sesión
@@ -90,7 +126,7 @@ export function AppLayout() {
             <TrendingDown className="size-4" />
             Egresos
           </NavLink>
-          {isAdmin && (
+          {effectiveIsAdmin && (
             <>
               <NavLink to="/caja" className={navLinkClass}>
                 <CreditCard className="size-4" />
@@ -120,6 +156,8 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {user && <SetPinDialog open={pinDialogOpen} onOpenChange={setPinDialogOpen} user={user} />}
     </div>
   );
 }

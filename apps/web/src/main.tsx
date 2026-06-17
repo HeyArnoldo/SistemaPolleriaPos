@@ -5,15 +5,18 @@ import { RouterProvider } from 'react-router-dom';
 import { queryClient } from '@/lib/query-client';
 import { router } from '@/router';
 import { Toaster } from '@/components/ui/sonner';
+import { OfflineAuthProvider } from '@/contexts/offline-auth-context';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <Suspense fallback={null}>
-        <RouterProvider router={router} />
-      </Suspense>
-      <Toaster richColors />
+      <OfflineAuthProvider>
+        <Suspense fallback={null}>
+          <RouterProvider router={router} />
+        </Suspense>
+        <Toaster richColors />
+      </OfflineAuthProvider>
     </QueryClientProvider>
   </StrictMode>,
 );
