@@ -1,5 +1,4 @@
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Minus, Plus, Trash2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/formatting';
 import type { CartItem } from '@/hooks/use-cart';
@@ -14,45 +13,38 @@ export function CartItemRow({ item, onUpdateQuantity, onRemove }: CartItemRowPro
   const subtotal = item.product.price * item.quantity;
 
   return (
-    <div className="flex items-center gap-2 py-2 border-b last:border-0">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{item.product.name}</p>
-        <p className="text-xs text-muted-foreground">{formatCurrency(item.product.price)} c/u</p>
+    <div className="flex items-center gap-3 py-3">
+      <div className="flex-1">
+        <p className="font-semibold">{item.product.name}</p>
+        <p className="text-sm text-muted-foreground">{formatCurrency(item.product.price)}</p>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <Button
           variant="outline"
           size="icon"
-          className="h-6 w-6"
+          className="h-7 w-7"
           onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)}
         >
           <Minus className="h-3 w-3" />
         </Button>
-        <Input
-          className="h-6 w-10 text-center text-sm p-0"
-          value={item.quantity}
-          onChange={(e) => {
-            const val = parseInt(e.target.value);
-            if (!isNaN(val)) onUpdateQuantity(item.product.id, val);
-          }}
-        />
+        <span className="w-8 text-center">{item.quantity}</span>
         <Button
           variant="outline"
           size="icon"
-          className="h-6 w-6"
+          className="h-7 w-7"
           onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
         >
           <Plus className="h-3 w-3" />
         </Button>
       </div>
-      <div className="text-sm font-medium w-20 text-right">{formatCurrency(subtotal)}</div>
+      <span className="w-20 text-right font-semibold">{formatCurrency(subtotal)}</span>
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6 text-destructive hover:text-destructive"
+        className="h-7 w-7 text-destructive hover:text-destructive"
         onClick={() => onRemove(item.product.id)}
       >
-        <Trash2 className="h-3 w-3" />
+        <Trash2 className="h-4 w-4" />
       </Button>
     </div>
   );
