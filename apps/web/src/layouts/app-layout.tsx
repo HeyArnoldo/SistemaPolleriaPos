@@ -11,6 +11,8 @@ import {
   Users,
 } from 'lucide-react';
 import { useLogout, useMe } from '@/hooks/use-auth';
+import { useConnectivity } from '@/hooks/use-connectivity';
+import { useSync } from '@/hooks/use-sync';
 import { canAccessRoute } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { SyncStatus } from '@/components/ui/sync-status';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   [
@@ -34,6 +37,8 @@ export function AppLayout() {
   const { data: user } = useMe();
   const logout = useLogout();
   const navigate = useNavigate();
+  const { syncNow, isSyncing, pendingCount } = useSync();
+  const { isOnline } = useConnectivity({ onReconnect: syncNow });
 
   const isAdmin = canAccessRoute(user?.role, 'dashboard');
 
@@ -46,24 +51,32 @@ export function AppLayout() {
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
           <span className="font-semibold">Pollería Carbón</span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <UserIcon className="size-4" />
-                {user?.profile.firstName}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel className="font-normal text-muted-foreground">
-                {user?.username}
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout}>
-                <LogOut className="size-4" />
-                Cerrar sesión
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            <SyncStatus
+              isOnline={isOnline}
+              pendingCount={pendingCount}
+              isSyncing={isSyncing}
+              onSyncNow={syncNow}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <UserIcon className="size-4" />
+                  {user?.profile.firstName}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel className="font-normal text-muted-foreground">
+                  {user?.username}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout}>
+                  <LogOut className="size-4" />
+                  Cerrar sesión
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
 

@@ -10,6 +10,7 @@ import { useGetProducts, useGetCategories } from '@/hooks/use-products';
 import { useGetPaymentMethods } from '@/hooks/use-payment-methods';
 import { useCreateSale } from '@/hooks/use-sales';
 import { usePaymentState } from '@/hooks/use-payment-state';
+import { useConnectivity } from '@/hooks/use-connectivity';
 import { ProductGrid } from '@/components/dashboard/ventas/product-grid';
 import { CartItemRow } from '@/components/dashboard/ventas/cart-item-row';
 import { PaymentForm } from '@/components/dashboard/ventas/payment-form';
@@ -17,6 +18,7 @@ import { formatCurrency } from '@/lib/formatting';
 import { generateSaleNumber } from '@/lib/ventas';
 import { parseMoney } from '@/lib/ventas';
 import { getErrorMessage } from '@/lib/errors';
+import { enqueueSale } from '@/lib/queue-manager';
 
 export default function VentasPage() {
   const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
@@ -24,6 +26,7 @@ export default function VentasPage() {
   const { data: categories = [] } = useGetCategories();
   const { data: paymentMethods = [] } = useGetPaymentMethods();
   const { mutate: createSale, isPending: isSubmitting } = useCreateSale();
+  const { isOnline } = useConnectivity();
 
   const [notesInput, setNotesInput] = useState('');
 
@@ -39,7 +42,7 @@ export default function VentasPage() {
     isValid,
   } = usePaymentState({ total, paymentMethods });
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (items.length === 0) {
       toast.error('Agrega al menos un producto');
       return;
@@ -63,6 +66,15 @@ export default function VentasPage() {
       })),
       ...(notesInput.trim() ? { notes: notesInput.trim() } : {}),
     };
+
+    if (!isOnline) {
+      await enqueueSale(salePayload.saleNumber, salePayload);
+      toast.success('Venta guardada sin conexión — se enviará al reconectarse');
+      clearCart();
+      resetPayments();
+      setNotesInput('');
+      return;
+    }
 
     createSale(salePayload, {
       onSuccess: () => {

@@ -17,6 +17,7 @@ import { Trash2, Plus } from 'lucide-react';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useGetExpenses, useCreateExpense, useDeleteExpense } from '@/hooks/use-cash';
 import { useGetPaymentMethods } from '@/hooks/use-payment-methods';
+import { useConnectivity } from '@/hooks/use-connectivity';
 import { formatCurrency, formatDateTime } from '@/lib/formatting';
 import {
   groupExpensesByDate,
@@ -25,6 +26,7 @@ import {
   getExpensePaymentName,
 } from '@/lib/caja';
 import { getErrorMessage } from '@/lib/errors';
+import { enqueueExpense } from '@/lib/queue-manager';
 import type { Expense } from '@/types/models';
 
 interface ExpenseFormValues {
@@ -39,6 +41,7 @@ export default function EgresosPage() {
   const { data: paymentMethods = [] } = useGetPaymentMethods();
   const { mutate: createExpense, isPending: isCreating } = useCreateExpense();
   const { mutate: deleteExpense, isPending: isDeleting } = useDeleteExpense();
+  const { isOnline } = useConnectivity();
 
   const [showForm, setShowForm] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -54,25 +57,32 @@ export default function EgresosPage() {
 
   const paymentMethodId = watch('paymentMethodId');
 
-  const onSubmit = (values: ExpenseFormValues) => {
-    createExpense(
-      {
-        description: values.description.trim(),
-        amount: parseFloat(values.amount),
-        paymentMethodId: parseInt(values.paymentMethodId),
-        ...(values.receiptNumber?.trim() ? { receiptNumber: values.receiptNumber.trim() } : {}),
+  const onSubmit = async (values: ExpenseFormValues) => {
+    const payload = {
+      description: values.description.trim(),
+      amount: parseFloat(values.amount),
+      paymentMethodId: parseInt(values.paymentMethodId),
+      ...(values.receiptNumber?.trim() ? { receiptNumber: values.receiptNumber.trim() } : {}),
+    };
+
+    if (!isOnline) {
+      await enqueueExpense(crypto.randomUUID(), payload);
+      toast.success('Egreso guardado sin conexión — se enviará al reconectarse');
+      reset();
+      setShowForm(false);
+      return;
+    }
+
+    createExpense(payload, {
+      onSuccess: () => {
+        toast.success('Egreso registrado');
+        reset();
+        setShowForm(false);
       },
-      {
-        onSuccess: () => {
-          toast.success('Egreso registrado');
-          reset();
-          setShowForm(false);
-        },
-        onError: (err) => {
-          toast.error(getErrorMessage(err, 'Error al registrar el egreso'));
-        },
+      onError: (err) => {
+        toast.error(getErrorMessage(err, 'Error al registrar el egreso'));
       },
-    );
+    });
   };
 
   const handleDelete = () => {
