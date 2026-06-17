@@ -17,7 +17,12 @@ export function useConnectivity({ onReconnect }: UseConnectivityOptions = {}) {
 
   const checkHealth = useCallback(async () => {
     try {
-      await api.get('/health', { timeout: REQUEST_TIMEOUT_MS });
+      // /health vive fuera del prefijo /api (Docker/Coolify healthcheck),
+      // así que sobreescribimos baseURL para no pegarle a /api/health (404).
+      await api.get('/health', {
+        timeout: REQUEST_TIMEOUT_MS,
+        baseURL: import.meta.env.VITE_API_URL ?? '',
+      });
       setIsOnline((prev) => {
         if (!prev || wasOfflineRef.current) {
           wasOfflineRef.current = false;

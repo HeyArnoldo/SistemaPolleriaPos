@@ -20,6 +20,11 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      // /health cuelga fuera de /api (healthcheck); el hook de conectividad le pega directo.
+      '/health': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 });

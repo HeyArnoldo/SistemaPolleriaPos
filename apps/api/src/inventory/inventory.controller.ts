@@ -24,7 +24,7 @@ import { z } from 'zod';
 const updateCategorySchema = z.object({ name: z.string().min(1).max(255) }).partial();
 
 @UseGuards(JwtAuthGuard)
-@Controller()
+@Controller('inventory')
 export class InventoryController {
   constructor(
     private readonly categories: CategoriesService,

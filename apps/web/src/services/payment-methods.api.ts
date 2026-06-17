@@ -2,7 +2,7 @@ import { api } from '@/lib/api';
 import type { PaymentMethod } from '@/types/models';
 
 export const getPaymentMethods = async (): Promise<PaymentMethod[]> => {
-  const { data } = await api.get('/sales/payment-methods');
+  const { data } = await api.get('/payment-methods');
   return data;
 };
 
@@ -11,13 +11,13 @@ export const createPaymentMethod = async (payload: {
   commissionPercentage?: number;
   requiresTransferTime?: boolean;
 }): Promise<PaymentMethod> => {
-  const { data } = await api.post('/sales/payment-methods', payload);
+  const { data } = await api.post('/payment-methods', payload);
   return data;
 };
 
 export const getAllPaymentMethods = async (): Promise<PaymentMethod[]> => {
   // Alias of getPaymentMethods — backend returns all methods at this endpoint
-  const { data } = await api.get('/sales/payment-methods');
+  const { data } = await api.get('/payment-methods');
   return data;
 };
 
@@ -30,6 +30,6 @@ export const updatePaymentMethod = async (
     isActive: boolean;
   }>,
 ): Promise<PaymentMethod> => {
-  const { data } = await api.patch(`/sales/payment-methods/${id}`, payload);
+  const { data } = await api.patch(`/payment-methods/${id}`, payload);
   return data;
 };
