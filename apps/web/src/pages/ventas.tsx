@@ -16,7 +16,7 @@ import { PaymentForm } from '@/components/dashboard/ventas/payment-form';
 import { CategoryFilters } from '@/components/dashboard/ventas/category-filters';
 import { OfflineBanner } from '@/components/dashboard/ventas/offline-banner';
 import { TicketPreviewDialog } from '@/components/dashboard/ventas/ticket-preview-dialog';
-import { generateSaleNumber, parseMoney } from '@/lib/ventas';
+import { generateSaleNumber } from '@/lib/ventas';
 import { getErrorMessage } from '@/lib/errors';
 import { enqueueSale } from '@/lib/queue-manager';
 import { buildTicketHtml } from '@/lib/ticket';
@@ -39,15 +39,33 @@ export default function VentasPage() {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
 
   const {
-    payments,
-    addPaymentLine,
-    removePaymentLine,
-    updatePayment,
-    setPaymentMethodForLine,
-    resetPayments,
-    totalPaid,
-    change,
-    isValid,
+    paymentMode,
+    singleMethodId,
+    singleCashReceived,
+    singleTransferTime,
+    mixedYapeAmount,
+    mixedCashAmount,
+    mixedTransferTime,
+    isMixedEnabled,
+    singleGrossAmount,
+    singleNetAmount,
+    singleCommissionAmount,
+    mixedYapeGrossAmount,
+    mixedYapeNetAmountValue,
+    mixedYapeCommissionAmount,
+    mixedCashAmountValue,
+    mixedTotalGross,
+    paymentSummary,
+    canSubmit,
+    setPaymentMode,
+    setSingleMethodId,
+    setSingleCashReceived,
+    setSingleTransferTime,
+    setMixedYapeAmount,
+    setMixedCashAmount,
+    setMixedTransferTime,
+    resetPayment,
+    buildPaymentsPayload,
   } = usePaymentState({ total, paymentMethods });
 
   const filteredProducts = products.filter((p) => {
@@ -56,7 +74,7 @@ export default function VentasPage() {
     return true;
   });
 
-  const isSubmitDisabled = items.length === 0 || total <= 0 || isSubmitting || !isValid;
+  const isSubmitDisabled = items.length === 0 || total <= 0 || isSubmitting || !canSubmit;
 
   const handlePrintSale = (sale: Sale) => {
     const settings = getPrintSettings();
@@ -90,8 +108,14 @@ export default function VentasPage() {
       toast.error('Agrega al menos un producto');
       return;
     }
-    if (!isValid) {
+    if (!canSubmit) {
       toast.error('Completa los datos de pago correctamente');
+      return;
+    }
+
+    const payments = buildPaymentsPayload();
+    if (!payments) {
+      // buildPaymentsPayload already shows a specific toast error
       return;
     }
 
@@ -102,11 +126,7 @@ export default function VentasPage() {
         quantity: i.quantity,
         unitPrice: i.product.price,
       })),
-      payments: payments.map((p) => ({
-        paymentMethodId: p.paymentMethodId,
-        amount: parseMoney(p.amount),
-        ...(p.transferTime ? { transferTime: p.transferTime } : {}),
-      })),
+      payments,
       ...(notesInput.trim() ? { notes: notesInput.trim() } : {}),
     };
 
@@ -114,7 +134,7 @@ export default function VentasPage() {
       await enqueueSale(salePayload.saleNumber, salePayload);
       toast.success('Venta guardada sin conexión — se enviará al reconectarse');
       clearCart();
-      resetPayments();
+      resetPayment();
       setNotesInput('');
       return;
     }
@@ -124,7 +144,7 @@ export default function VentasPage() {
         toast.success('Venta registrada correctamente');
         handlePrintSale(sale);
         clearCart();
-        resetPayments();
+        resetPayment();
         setNotesInput('');
       },
       onError: (err) => {
@@ -184,16 +204,33 @@ export default function VentasPage() {
 
           <CardContent className="space-y-4">
             <PaymentForm
-              payments={payments}
               paymentMethods={paymentMethods}
+              paymentMode={paymentMode}
+              onPaymentModeChange={setPaymentMode}
+              isMixedEnabled={isMixedEnabled}
+              singleMethodId={singleMethodId}
+              onSingleMethodChange={setSingleMethodId}
+              singleCashReceived={singleCashReceived}
+              onSingleCashReceivedChange={setSingleCashReceived}
+              singleTransferTime={singleTransferTime}
+              onSingleTransferTimeChange={setSingleTransferTime}
+              mixedYapeAmount={mixedYapeAmount}
+              onMixedYapeAmountChange={setMixedYapeAmount}
+              mixedCashAmount={mixedCashAmount}
+              onMixedCashAmountChange={setMixedCashAmount}
+              mixedTransferTime={mixedTransferTime}
+              onMixedTransferTimeChange={setMixedTransferTime}
+              paymentSummary={paymentSummary}
               total={total}
-              totalPaid={totalPaid}
-              change={change}
-              onAddLine={addPaymentLine}
-              onRemoveLine={removePaymentLine}
-              onUpdateAmount={(i, v) => updatePayment(i, { amount: v })}
-              onUpdateMethod={setPaymentMethodForLine}
-              onUpdateTransferTime={(i, v) => updatePayment(i, { transferTime: v })}
+              singleGrossAmount={singleGrossAmount}
+              singleNetAmount={singleNetAmount}
+              singleCommissionAmount={singleCommissionAmount}
+              mixedYapeGrossAmount={mixedYapeGrossAmount}
+              mixedYapeNetAmountValue={mixedYapeNetAmountValue}
+              mixedYapeCommissionAmount={mixedYapeCommissionAmount}
+              mixedCashAmountValue={mixedCashAmountValue}
+              mixedTotalGross={mixedTotalGross}
+              onRequestSubmit={() => void handleSubmit()}
             />
 
             <Textarea
@@ -212,7 +249,7 @@ export default function VentasPage() {
               disabled={isSubmitting}
               onClick={() => {
                 clearCart();
-                resetPayments();
+                resetPayment();
                 setNotesInput('');
               }}
             >
