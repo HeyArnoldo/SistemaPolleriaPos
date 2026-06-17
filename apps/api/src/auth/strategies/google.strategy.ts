@@ -1,11 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Profile, Strategy, VerifyCallback } from 'passport-google-oauth20';
-import { GoogleProfileData } from '../../users/users.service';
+
+export interface GoogleProfileData {
+  googleId: string;
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+}
 
 /**
- * Solo se registra como provider si isGoogleEnabled() (ver auth.module.ts).
- * Instanciarla con clientID vacío lanza error: por eso el registro condicional.
+ * Only registered as provider when isGoogleEnabled() (see auth.module.ts).
+ * Instantiating with empty clientID throws an error — hence conditional registration.
  */
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
@@ -27,7 +33,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   ): void {
     const email = profile.emails?.[0]?.value;
     if (!email) {
-      done(new Error('La cuenta de Google no expone un email'), undefined);
+      done(new Error('Google account does not expose an email'), undefined);
       return;
     }
     const data: GoogleProfileData = {
@@ -36,7 +42,6 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       name: profile.displayName ?? email,
       avatarUrl: profile.photos?.[0]?.value ?? null,
     };
-    // req.user = data (lo consume el callback del AuthController)
     done(null, data);
   }
 }

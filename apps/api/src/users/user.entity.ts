@@ -1,39 +1,47 @@
 import {
+  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { UserRole } from '@app/contracts';
+import * as bcrypt from 'bcryptjs';
+import { Role } from '../common/enums/role.enum';
+import { Profile } from './profile.entity';
 
 @Entity('users')
 export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  @Column({ type: 'varchar', length: 160, unique: true })
-  email: string;
+  @Column({ type: 'varchar', length: 255, unique: true })
+  username: string;
 
-  @Column({ type: 'varchar', length: 120 })
-  name: string;
+  @Column({ type: 'varchar', length: 255, name: 'password_hash' })
+  passwordHash: string;
 
-  // Nullable: los usuarios que entran solo con Google no tienen password.
-  @Column({ type: 'varchar', length: 100, nullable: true })
-  passwordHash: string | null;
+  @Column({ type: 'boolean', default: true, name: 'is_active' })
+  isActive: boolean;
 
-  @Column({ type: 'varchar', length: 64, nullable: true, unique: true })
-  googleId: string | null;
+  @Column({ type: 'varchar', length: 20, default: Role.Cashier })
+  role: Role;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
-  avatarUrl: string | null;
+  @OneToOne(() => Profile, { cascade: true, eager: false, nullable: false })
+  @JoinColumn({ name: 'profile_id' })
+  profile: Profile;
 
-  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
-  role: UserRole;
-
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @BeforeInsert()
+  async hashPassword(): Promise<void> {
+    const rounds = parseInt(process.env.SALT_ROUNDS ?? process.env.BCRYPT_ROUNDS ?? '10', 10);
+    this.passwordHash = await bcrypt.hash(this.passwordHash, rounds);
+  }
 }

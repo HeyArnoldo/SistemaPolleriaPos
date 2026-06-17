@@ -6,15 +6,22 @@ import { validateEnv } from './config/env.validation';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { SalesModule } from './sales/sales.module';
+import { CashModule } from './cash/cash.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
-    // El .env ya fue cargado por load-env (main.ts, primera línea).
     ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true, validate: validateEnv }),
     TypeOrmModule.forRoot(dataSourceOptions),
     UsersModule,
     AuthModule,
     HealthModule,
+    InventoryModule,
+    SalesModule,
+    CashModule,
+    SettingsModule,
   ],
 })
 export class AppModule {}

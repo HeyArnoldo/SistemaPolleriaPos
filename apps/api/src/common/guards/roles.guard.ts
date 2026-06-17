@@ -1,16 +1,16 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from '@app/contracts';
+import { Role } from '../enums/role.enum';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { User } from '../../users/user.entity';
 
-/** Verifica el rol del usuario. Va DESPUÉS de JwtAuthGuard en @UseGuards. */
+/** Verifies the user's role. Place AFTER JwtAuthGuard in @UseGuards. */
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(ctx: ExecutionContext): boolean {
-    const required = this.reflector.getAllAndOverride<UserRole[] | undefined>(ROLES_KEY, [
+    const required = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES_KEY, [
       ctx.getHandler(),
       ctx.getClass(),
     ]);
@@ -18,7 +18,7 @@ export class RolesGuard implements CanActivate {
 
     const { user } = ctx.switchToHttp().getRequest<{ user?: User }>();
     if (!user || !required.includes(user.role)) {
-      throw new ForbiddenException('No tienes permisos para esta acción');
+      throw new ForbiddenException('You do not have permission to perform this action');
     }
     return true;
   }

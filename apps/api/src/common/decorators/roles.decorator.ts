@@ -1,7 +1,7 @@
 import { SetMetadata } from '@nestjs/common';
-import { UserRole } from '@app/contracts';
+import { Role } from '../enums/role.enum';
 
 export const ROLES_KEY = 'roles';
 
-/** Restringe la ruta a los roles indicados. Usar junto con RolesGuard. */
-export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES_KEY, roles);
+/** Restricts a route to the specified roles. Use together with RolesGuard. */
+export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);

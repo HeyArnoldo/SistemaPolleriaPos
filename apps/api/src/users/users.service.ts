@@ -1,56 +1,82 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { UserRole } from '@app/contracts';
 import { User } from './user.entity';
+import { Profile } from './profile.entity';
+import { Role } from '../common/enums/role.enum';
 
-export interface GoogleProfileData {
-  googleId: string;
-  email: string;
-  name: string;
-  avatarUrl: string | null;
+export interface CreateUserDto {
+  username: string;
+  passwordHash: string;
+  role?: Role;
+  firstName: string;
+  lastName: string;
+  avatarUrl?: string | null;
+}
+
+export interface UpdateUserDto {
+  username?: string;
+  isActive?: boolean;
+  role?: Role;
+  firstName?: string;
+  lastName?: string;
+  avatarUrl?: string | null;
 }
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectRepository(User) private readonly repo: Repository<User>) {}
+  constructor(
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
+    @InjectRepository(Profile) private readonly profileRepo: Repository<Profile>,
+  ) {}
 
-  findById(id: string): Promise<User | null> {
-    return this.repo.findOne({ where: { id } });
+  findByUsername(username: string): Promise<User | null> {
+    return this.userRepo.findOne({ where: { username }, relations: ['profile'] });
   }
 
-  findByEmail(email: string): Promise<User | null> {
-    return this.repo.findOne({ where: { email } });
+  findById(id: number): Promise<User | null> {
+    return this.userRepo.findOne({ where: { id }, relations: ['profile'] });
   }
 
-  create(data: Partial<User>): Promise<User> {
-    return this.repo.save(this.repo.create(data));
+  async findOne(id: number): Promise<User> {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException(`User ${id} not found`);
+    return user;
   }
 
-  save(user: User): Promise<User> {
-    return this.repo.save(user);
+  async create(dto: CreateUserDto): Promise<User> {
+    const profile = this.profileRepo.create({
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      avatarUrl: dto.avatarUrl ?? null,
+    });
+    const user = this.userRepo.create({
+      username: dto.username,
+      passwordHash: dto.passwordHash,
+      role: dto.role ?? Role.Cashier,
+      profile,
+    });
+    return this.userRepo.save(user);
   }
 
-  /**
-   * Login con Google: busca por googleId; si no existe pero hay un usuario
-   * local con el mismo email, vincula la cuenta; si no, lo crea.
-   */
-  async upsertFromGoogle(profile: GoogleProfileData): Promise<User> {
-    let user = await this.repo.findOne({ where: { googleId: profile.googleId } });
-    if (!user) {
-      user = await this.findByEmail(profile.email);
-      if (user) {
-        user.googleId = profile.googleId;
-      } else {
-        user = this.repo.create({
-          email: profile.email,
-          name: profile.name,
-          googleId: profile.googleId,
-          role: UserRole.USER,
-        });
-      }
-    }
-    user.avatarUrl = profile.avatarUrl;
-    return this.repo.save(user);
+  async findAll(): Promise<User[]> {
+    return this.userRepo.find({ relations: ['profile'] });
+  }
+
+  async update(id: number, dto: UpdateUserDto): Promise<User> {
+    const user = await this.findOne(id);
+    if (dto.username !== undefined) user.username = dto.username;
+    if (dto.isActive !== undefined) user.isActive = dto.isActive;
+    if (dto.role !== undefined) user.role = dto.role;
+    if (dto.firstName !== undefined) user.profile.firstName = dto.firstName;
+    if (dto.lastName !== undefined) user.profile.lastName = dto.lastName;
+    if (dto.avatarUrl !== undefined) user.profile.avatarUrl = dto.avatarUrl;
+    return this.userRepo.save(user);
+  }
+
+  async deactivate(id: number): Promise<User> {
+    const user = await this.findOne(id);
+    user.isActive = false;
+    return this.userRepo.save(user);
   }
 }

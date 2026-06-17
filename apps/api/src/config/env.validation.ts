@@ -35,8 +35,8 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALLBACK_URL: z.string().optional(),
 
-  // Admin inicial (seed). Ver README: con password = admin local; sin password = whitelist Google.
-  ADMIN_EMAIL: z.string().optional(),
+  // Admin inicial (seed).
+  ADMIN_USERNAME: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   ADMIN_NAME: z.string().optional(),
 });
