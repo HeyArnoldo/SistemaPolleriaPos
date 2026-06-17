@@ -1,3 +1,4 @@
+import { builtinModules } from 'node:module';
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
@@ -6,7 +7,7 @@ export default defineConfig({
     outDir: 'dist-electron',
     emptyOutDir: true,
     rollupOptions: {
-      external: ['electron'],
+      external: ['electron', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
       input: {
         main: resolve(__dirname, 'electron/main.ts'),
         preload: resolve(__dirname, 'electron/preload.ts'),
