@@ -8,8 +8,8 @@ import { User } from '../../users/user.entity';
 import { CreateExpenseDto, SyncExpensesDto } from '../dto/create-expense.dto';
 
 export interface DateRangeFilter {
-  from: string;
-  to: string;
+  from?: string;
+  to?: string;
 }
 
 /** @deprecated Use CashDashboardResponse instead */
@@ -104,13 +104,24 @@ export class CashService {
   }
 
   async findAll(filter: DateRangeFilter): Promise<Expense[]> {
+    const hasFrom = filter.from && !isNaN(new Date(filter.from).getTime());
+    const hasTo = filter.to && !isNaN(new Date(filter.to).getTime());
+
     return this.expenseRepo.find({
-      where: {
-        createdAt: Between(new Date(filter.from), new Date(filter.to)),
-      },
+      where:
+        hasFrom && hasTo
+          ? { createdAt: Between(new Date(filter.from!), new Date(filter.to!)) }
+          : {},
       relations: ['paymentMethod', 'createdBy'],
       order: { createdAt: 'DESC' },
     });
+  }
+
+  async deleteExpense(id: number): Promise<{ deleted: boolean }> {
+    const expense = await this.expenseRepo.findOne({ where: { id } });
+    if (!expense) throw new NotFoundException(`Expense ${id} not found`);
+    await this.expenseRepo.remove(expense);
+    return { deleted: true };
   }
 
   async getDashboard(date?: string): Promise<CashDashboardResponse> {

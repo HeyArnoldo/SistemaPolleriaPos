@@ -9,12 +9,13 @@ import { Expense } from '../cash/entities/expense.entity';
 import { SalesService } from './services/sales.service';
 import { PaymentMethodService } from './services/payment-method.service';
 import { CashReportService } from './services/cash-report.service';
+import { SalesResetService } from './services/sales-reset.service';
 import { SalesController } from './sales.controller';
 import { PaymentMethodController } from './payment-method.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([PaymentMethod, Sale, SaleItem, Payment, Product, Expense])],
-  providers: [SalesService, PaymentMethodService, CashReportService],
+  providers: [SalesService, PaymentMethodService, CashReportService, SalesResetService],
   controllers: [SalesController, PaymentMethodController],
   exports: [SalesService, PaymentMethodService],
 })

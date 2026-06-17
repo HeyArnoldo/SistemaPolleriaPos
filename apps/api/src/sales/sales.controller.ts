@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -20,6 +21,7 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { User } from '../users/user.entity';
 import { SalesService } from './services/sales.service';
 import { CashReportService } from './services/cash-report.service';
+import { SalesResetService } from './services/sales-reset.service';
 import {
   createSaleSchema,
   syncSalesSchema,
@@ -34,6 +36,7 @@ export class SalesController {
   constructor(
     private readonly salesService: SalesService,
     private readonly cashReportService: CashReportService,
+    private readonly salesResetService: SalesResetService,
   ) {}
 
   @Post()
@@ -84,6 +87,22 @@ export class SalesController {
     );
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(Buffer.from(buffer as ArrayBuffer));
+  }
+
+  /** Admin-only: wipe ALL financial data (sales, items, payments, expenses) in a transaction. */
+  @Delete('reset/all')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  resetSalesAll() {
+    return this.salesResetService.resetAllFinancialData();
+  }
+
+  /** Admin-only: wipe financial data for a single Lima-timezone day (YYYY-MM-DD). */
+  @Delete('reset/date/:date')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  resetSalesByDate(@Param('date') date: string) {
+    return this.salesResetService.resetFinancialDataByDate(date);
   }
 
   @Get(':id')
