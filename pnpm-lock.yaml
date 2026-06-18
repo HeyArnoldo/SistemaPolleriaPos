@@ -29,6 +29,12 @@ importers:
 
   apps/api:
     dependencies:
+      '@app/carbopuntos-client':
+        specifier: workspace:*
+        version: link:../../packages/carbopuntos-client
+      '@app/carbopuntos-contracts':
+        specifier: workspace:*
+        version: link:../../packages/carbopuntos-contracts
       '@app/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

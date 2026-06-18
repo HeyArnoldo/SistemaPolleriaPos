@@ -199,45 +199,45 @@ antes del lint.
 
 ### Tareas
 
-- [ ] **T5.1** TEST: `apps/api/src/products/products.spec.ts` — agregar casos para el campo
+- [x] **T5.1** TEST: `apps/api/src/products/products.spec.ts` — agregar casos para el campo
       `puntaje` (default 0, tipo integer, nunca negativo).
-- [ ] **T5.2** IMPL: agregar columna `puntaje integer DEFAULT 0` a la entidad `Product` en
-      `apps/api/src/products/entities/product.entity.ts`. Columna explícita `puntaje`.
-- [ ] **T5.3** IMPL: migración `AddPuntajeToProduct` en `apps/api`.
-- [ ] **T5.4** TEST: `apps/api/src/rewards/rewards.spec.ts` — CRUD de `Reward` local (crear,
+- [x] **T5.2** IMPL: agregar columna `puntaje integer DEFAULT 0` a la entidad `Product` en
+      `apps/api/src/inventory/entities/product.entity.ts`. Columna explícita `puntaje`.
+- [x] **T5.3** IMPL: migración `AddPuntajeToProduct` en `apps/api`.
+- [x] **T5.4** TEST: `apps/api/src/rewards/rewards.spec.ts` — CRUD de `Reward` local (crear,
       listar, activar/desactivar, eliminar lógico). Sin FK al hub.
-- [ ] **T5.5** IMPL: entidad `Reward` local en `apps/api/src/rewards/entities/reward.entity.ts`
+- [x] **T5.5** IMPL: entidad `Reward` local en `apps/api/src/rewards/entities/reward.entity.ts`
       (id, name, cost_points, is_active, created_at). Columnas explícitas snake_case.
-- [ ] **T5.6** IMPL: `RewardsModule`, `RewardsController`, `RewardsService` en `apps/api`.
+- [x] **T5.6** IMPL: `RewardsModule`, `RewardsController`, `RewardsService` en `apps/api`.
       Endpoints CRUD básicos (`GET /rewards`, `POST /rewards`, `PATCH /rewards/:id`,
       `DELETE /rewards/:id` lógico).
-- [ ] **T5.7** IMPL: migración `CreateRewardTable` en `apps/api`.
-- [ ] **T5.8** TEST: `apps/api/src/sales/sales.spec.ts` — agregar caso: venta con `customer_dni`
+- [x] **T5.7** IMPL: migración `CreateRewardTable` en `apps/api`.
+- [x] **T5.8** TEST: `apps/api/src/sales/sales.spec.ts` — agregar caso: venta con `customer_dni`
       calcula puntos correctamente (Σ puntaje × qty).
-- [ ] **T5.9** IMPL: agregar columna `customer_dni varchar(8) NULL` a `Sale` en
+- [x] **T5.9** IMPL: agregar columna `customer_dni varchar(8) NULL` a `Sale` en
       `apps/api/src/sales/entities/sale.entity.ts`. Columna explícita. Sin FK (D20).
-- [ ] **T5.10** IMPL: migración `AddCustomerDniToSale` en `apps/api`.
-- [ ] **T5.11** TEST: `apps/api/src/sales/carbopuntos-accrue.spec.ts` — `createSale()` con
+- [x] **T5.10** IMPL: migración `AddCustomerDniToSale` en `apps/api`.
+- [x] **T5.11** TEST: `apps/api/src/sales/carbopuntos-accrue.spec.ts` — `createSale()` con
       `customer_dni`: llama `client.accrue` con la `idempotencyKey` correcta. Si el cliente lanza
       `CarbopuntosUnavailableError`, la venta igual se cierra y se crea una entrada en
       `carbopuntos_pending_movement`.
-- [ ] **T5.12** IMPL: instanciar `CarbopuntosClient` en `apps/api` desde las env vars.
+- [x] **T5.12** IMPL: instanciar `CarbopuntosClient` en `apps/api` desde las env vars.
       Crear `CarbopuntosModule` que provee el cliente.
-- [ ] **T5.13** IMPL: cablear acumulación en `SalesService.createSale()`: si `customer_dni` y
+- [x] **T5.13** IMPL: cablear acumulación en `SalesService.createSale()`: si `customer_dni` y
       puntos > 0, llamar `client.accrue(...)` tras guardar la venta. Excepción → encolar pendiente.
-- [ ] **T5.14** TEST: `apps/api/src/sales/carbopuntos-reverse.spec.ts` — `cancelSale()` con
+- [x] **T5.14** TEST: `apps/api/src/sales/carbopuntos-reverse.spec.ts` — `cancelSale()` con
       `customer_dni`: llama `client.reverse(saleRef)`. Si falla, encola pendiente.
-- [ ] **T5.15** IMPL: cablear reversa en `SalesService.cancelSale()`: si la venta tiene
+- [x] **T5.15** IMPL: cablear reversa en `SalesService.cancelSale()`: si la venta tiene
       `customer_dni`, llamar `client.reverse(saleRef)`. Excepción → encolar pendiente.
-- [ ] **T5.16** TEST: `apps/api/src/carbopuntos/pending-queue.spec.ts` — encolar un movimiento
+- [x] **T5.16** TEST: `apps/api/src/carbopuntos/pending-queue.spec.ts` — encolar un movimiento
       fallido, reintentar, marcar como `failed` tras N intentos.
-- [ ] **T5.17** IMPL: tabla `carbopuntos_pending_movement` (migración) y servicio de cola de
+- [x] **T5.17** IMPL: tabla `carbopuntos_pending_movement` (migración) y servicio de cola de
       pendientes `CarbopuntosPendingService`. Backoff exponencial. Estado: `pending|retrying|failed`.
-      Reintento al llamar `/sales/sync` existente (hook en `SalesSyncService` o equivalente).
-- [ ] **T5.18** IMPL: actualizar `@app/contracts` o los DTOs de la sede para incluir los nuevos
-      campos (`puntaje` en productos, `customer_dni` en ventas) si aún no están.
-- [ ] **T5.19** VERIFY: `pnpm --filter @app/api test` pasa. `pnpm --filter @app/api build` compila.
-      Rebase sobre main.
+      Reintento via `POST /api/carbopuntos/sync` (CarbopuntosSyncController).
+- [x] **T5.18** IMPL: actualizar `@app/contracts` para incluir los nuevos campos
+      (`puntaje` en productos, `customer_dni` en ventas). Env vars en `.env.example` y validación.
+- [x] **T5.19** VERIFY: `pnpm --filter @app/api test` pasa (52 tests: 27 originales + 25 nuevos).
+      `pnpm --filter @app/api build` compila. lint y typecheck OK.
 
 **Hecho cuando:** vender con cliente acumula puntos; cancelar revierte; el hub caído no bloquea la venta.
 

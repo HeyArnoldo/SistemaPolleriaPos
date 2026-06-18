@@ -42,6 +42,7 @@ export class ProductsService {
       price: dto.price,
       imageUrl: dto.imageUrl ?? null,
       isActive: dto.isActive ?? true,
+      puntaje: dto.puntaje ?? 0,
       category,
     });
     return this.productRepo.save(product);
@@ -53,6 +54,7 @@ export class ProductsService {
     if (dto.price !== undefined) product.price = dto.price;
     if (dto.imageUrl !== undefined) product.imageUrl = dto.imageUrl ?? null;
     if (dto.isActive !== undefined) product.isActive = dto.isActive;
+    if (dto.puntaje !== undefined) product.puntaje = dto.puntaje;
     if (dto.categoryId !== undefined) {
       const category = await this.categoryRepo.findOne({ where: { id: dto.categoryId } });
       if (!category) throw new NotFoundException(`Category ${dto.categoryId} not found`);

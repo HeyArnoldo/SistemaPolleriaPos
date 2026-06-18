@@ -33,6 +33,9 @@ jobs:
       - name: Build carbopuntos-contracts
         run: pnpm --filter @app/carbopuntos-contracts build
 
+      - name: Build carbopuntos-client
+        run: pnpm --filter @app/carbopuntos-client build
+
       - name: Lint
         run: pnpm lint
 

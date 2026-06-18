@@ -24,6 +24,11 @@ export const createSaleSchema = z.object({
   notes: z.string().max(500).optional(),
   saleNumber: z.string().max(32).optional(),
   createdAt: z.coerce.date().optional(),
+  // Weak reference to hub customer — no FK (D20). 8-digit DNI or absent for anonymous sales.
+  customerDni: z
+    .string()
+    .regex(/^[0-9]{8}$/, 'customer_dni must be exactly 8 digits')
+    .optional(),
 });
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;
 
