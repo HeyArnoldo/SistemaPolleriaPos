@@ -63,12 +63,9 @@ export class PointsController {
     @Body(new ZodValidationPipe(reverseSchema)) body: ReverseInput,
     @CurrentSede() sede: string,
   ) {
-    const result = await this.pointsService.reverse({ ...body, sede });
-    // C15: no-op se retorna como objeto con isNoOp:true.
-    if (result.isNoOp) {
-      return { isNoOp: true, movement: null };
-    }
-    return { isNoOp: false, movement: result.movement };
+    // Contrato: reverse devuelve siempre un PointsMovement "pelado" (lo que el
+    // client espera). El caso no-op (C15) es un movimiento de reversa de 0 pts.
+    return this.pointsService.reverse({ ...body, sede });
   }
 
   @Post('points/adjust')

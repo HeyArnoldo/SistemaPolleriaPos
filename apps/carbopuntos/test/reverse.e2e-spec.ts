@@ -56,9 +56,11 @@ describe('Reverse (e2e)', () => {
     await closeApp();
   });
 
-  it('POST /points/reverse — reversa sobre venta sin acumulación previa → no-op (C15)', async () => {
+  it('POST /points/reverse — reversa sobre venta sin acumulación previa → no-op pelado (C15)', async () => {
     if (SKIP) return;
 
+    // Contrato: reverse devuelve SIEMPRE un PointsMovement "pelado" (lo que el
+    // client parsea con pointsMovementSchema). El no-op es un movimiento de 0 pts.
     const response = await supertest(app.getHttpServer())
       .post('/api/points/reverse')
       .set('Authorization', `Bearer ${SERVICE_KEY}`)
@@ -70,11 +72,13 @@ describe('Reverse (e2e)', () => {
       })
       .expect(201);
 
-    expect(response.body.isNoOp).toBe(true);
-    expect(response.body.movement).toBeNull();
+    expect(response.body.type).toBe('reversal');
+    expect(response.body.points).toBe(0);
+    // Saldo intacto: balanceBefore === balanceAfter.
+    expect(response.body.balanceBefore).toBe(response.body.balanceAfter);
   });
 
-  it('POST /points/reverse — reversa válida resta puntos del saldo', async () => {
+  it('POST /points/reverse — reversa válida resta puntos del saldo (movimiento pelado)', async () => {
     if (SKIP) return;
 
     const response = await supertest(app.getHttpServer())
@@ -88,11 +92,9 @@ describe('Reverse (e2e)', () => {
       })
       .expect(201);
 
-    expect(response.body.isNoOp).toBeFalsy();
-    expect(response.body.movement).toBeDefined();
-    expect(response.body.movement.type).toBe('reversal');
+    expect(response.body.type).toBe('reversal');
     // Saldo antes era 50; se restan 20 → 30.
-    expect(response.body.movement.balanceAfter).toBe(30);
+    expect(response.body.balanceAfter).toBe(30);
   });
 
   it('POST /points/reverse — reversa que excede el saldo topa en 0 (D6)', async () => {
@@ -118,6 +120,6 @@ describe('Reverse (e2e)', () => {
       .expect(201);
 
     // Saldo era 30 (tras reversa anterior); 9999 excede → topa en 0.
-    expect(response.body.movement.balanceAfter).toBe(0);
+    expect(response.body.balanceAfter).toBe(0);
   });
 });

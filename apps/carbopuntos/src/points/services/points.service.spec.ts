@@ -4,7 +4,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Repository, EntityManager } from 'typeorm';
+import { Repository, EntityManager, QueryFailedError } from 'typeorm';
 import { PointsService } from './points.service';
 import { Customer } from '../../customers/entities/customer.entity';
 import { PointsBalance } from '../entities/points-balance.entity';
@@ -56,6 +56,9 @@ function makeManager(
           return Promise.resolve(existingMovement);
         return Promise.resolve(null);
       }),
+    find: jest
+      .fn()
+      .mockImplementation(() => Promise.resolve(existingMovement ? [existingMovement] : [])),
     create: jest.fn().mockImplementation((entity: new () => unknown, data: unknown) => ({
       ...(data as object),
       _entity: entity,
@@ -200,10 +203,8 @@ describe('PointsService', () => {
   // ── reverse ──────────────────────────────────────────────────────────────
 
   describe('reverse', () => {
-    it('debe retornar no-op si no existe acumulación previa para ese sale_ref (C15)', async () => {
+    it('no-op (C15): devuelve un movimiento de reversa de 0 puntos (saldo intacto)', async () => {
       const manager = makeManager(makeCustomer(), makeBalance(50), null);
-      // El primer findOne (idempotencyKey) retorna null → no-op.
-      // El segundo findOne (PointsMovement con sale_ref) también retorna null.
       (customerRepo.manager.transaction as jest.Mock).mockImplementation(
         async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
       );
@@ -216,7 +217,8 @@ describe('PointsService', () => {
         sede: 'pisac',
       });
 
-      expect(result.isNoOp).toBe(true);
+      expect(result.type).toBe('reversal');
+      expect(result.points).toBe(0);
     });
 
     it('debe restar los puntos acumulados al revertir, topando el saldo en 0 si excede (D6)', async () => {
@@ -261,9 +263,9 @@ describe('PointsService', () => {
         sede: 'pisac',
       });
 
-      expect(result.isNoOp).toBeFalsy();
-      expect(result.movement!.balanceBefore).toBe(5);
-      expect(result.movement!.balanceAfter).toBe(0); // Topado en 0
+      expect(result.type).toBe('reversal');
+      expect(result.balanceBefore).toBe(5);
+      expect(result.balanceAfter).toBe(0); // Topado en 0
     });
   });
 
@@ -427,6 +429,297 @@ describe('PointsService', () => {
 
       // Respuesta idempotente: retorna el movimiento existente como lista.
       expect(Array.isArray(result)).toBe(true);
+    });
+  });
+
+  // ── Idempotencia atómica ante unique violation (23505) — Fix #1 ────────────
+
+  // Construye un manager que falla con 23505 en el primer save de movimiento,
+  // y re-lee el movimiento existente por idempotency_key después.
+  function makeManagerWith23505(
+    customer: Customer,
+    balance: PointsBalance,
+    existingMovements: PointsMovement[],
+  ): jest.Mocked<EntityManager> {
+    let movementSaveCount = 0;
+    return {
+      findOne: jest
+        .fn()
+        .mockImplementation(
+          (entity: new () => unknown, opts: { where: Record<string, unknown> }) => {
+            if (entity === Customer) return Promise.resolve(customer);
+            if (entity === PointsBalance) return Promise.resolve(balance);
+            // El primer findOne por idempotencyKey simula que aún no existe
+            // (otra request concurrente todavía no commiteó). Tras el 23505,
+            // la re-lectura encuentra el movimiento.
+            if (entity === PointsMovement && 'idempotencyKey' in opts.where) {
+              if (movementSaveCount === 0) return Promise.resolve(null);
+              const key = opts.where['idempotencyKey'] as string;
+              return Promise.resolve(
+                existingMovements.find((m) => m.idempotencyKey === key) ?? null,
+              );
+            }
+            return Promise.resolve(null);
+          },
+        ),
+      find: jest.fn().mockImplementation(() => Promise.resolve(existingMovements)),
+      create: jest
+        .fn()
+        .mockImplementation((_: unknown, data: unknown) => ({ ...(data as object) })),
+      save: jest.fn().mockImplementation((obj: unknown) => {
+        const o = obj as Record<string, unknown>;
+        // Solo los PointsMovement (tienen idempotencyKey/type) disparan el 23505.
+        if ('type' in o && 'idempotencyKey' in o && movementSaveCount === 0) {
+          movementSaveCount++;
+          return Promise.reject(
+            new QueryFailedError(
+              'insert',
+              [],
+              Object.assign(new Error('duplicate key value violates unique constraint'), {
+                code: '23505',
+              }),
+            ),
+          );
+        }
+        return Promise.resolve({ ...(obj as object), id: 'saved-id' });
+      }),
+    } as unknown as jest.Mocked<EntityManager>;
+  }
+
+  it('accrue: ante 23505 re-lee el movimiento existente y lo retorna (sin 500, sin doble aplicación)', async () => {
+    const existing = makeMovement({
+      idempotencyKey: 'race-key',
+      balanceAfter: 60,
+      id: 'existing-mov',
+    });
+    const manager = makeManagerWith23505(makeCustomer(), makeBalance(50), [existing]);
+    (customerRepo.manager.transaction as jest.Mock).mockImplementation(
+      async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
+    );
+
+    const result = await service.accrue({
+      customerDni: '12345678',
+      points: 10,
+      sede: 'pisac',
+      userRef: 'cajero1',
+      idempotencyKey: 'race-key',
+    });
+
+    expect(result.id).toBe('existing-mov');
+  });
+
+  it('redeem: ante 23505 re-lee el movimiento existente y lo retorna', async () => {
+    const existing = makeMovement({
+      type: 'redeem',
+      idempotencyKey: 'race-redeem',
+      id: 'existing-rdm',
+    });
+    const manager = makeManagerWith23505(makeCustomer(), makeBalance(200), [existing]);
+    (customerRepo.manager.transaction as jest.Mock).mockImplementation(
+      async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
+    );
+
+    const result = await service.redeem({
+      customerDni: '12345678',
+      points: 100,
+      sede: 'pisac',
+      userRef: 'cajero1',
+      idempotencyKey: 'race-redeem',
+    });
+
+    expect(result.id).toBe('existing-rdm');
+  });
+
+  // ── operation: solo-canje idempotente y replay completo — Fix #3 ───────────
+
+  describe('operation idempotencia (Fix #3)', () => {
+    it('solo-canje (accrualPoints=0): el replay devuelve el canje (no re-ejecuta)', async () => {
+      const redeemMov = makeMovement({
+        type: 'redeem',
+        points: -100,
+        idempotencyKey: 'op-solo:redeem',
+        id: 'redeem-existing',
+      });
+      // El servicio debe encontrar el movimiento de canje aun cuando la clave base no exista.
+      const manager = {
+        findOne: jest.fn().mockImplementation((entity: new () => unknown) => {
+          if (entity === Customer) return Promise.resolve(makeCustomer());
+          if (entity === PointsBalance) return Promise.resolve(makeBalance(200));
+          return Promise.resolve(null);
+        }),
+        find: jest.fn().mockImplementation(() => Promise.resolve([redeemMov])),
+        create: jest
+          .fn()
+          .mockImplementation((_: unknown, data: unknown) => ({ ...(data as object) })),
+        save: jest
+          .fn()
+          .mockImplementation((obj: unknown) => Promise.resolve({ ...(obj as object), id: 'x' })),
+      } as unknown as jest.Mocked<EntityManager>;
+      (customerRepo.manager.transaction as jest.Mock).mockImplementation(
+        async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
+      );
+
+      const result = await service.operation({
+        customerDni: '12345678',
+        accrualPoints: 0,
+        redemptionPoints: 100,
+        sede: 'pisac',
+        userRef: 'cajero1',
+        idempotencyKey: 'op-solo',
+      });
+
+      // Replay: devuelve el canje existente; no debe haber guardado un movimiento nuevo.
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('redeem-existing');
+      const movementSaves = (manager.save as jest.Mock).mock.calls.filter(
+        ([o]: [Record<string, unknown>]) => 'type' in o,
+      );
+      expect(movementSaves).toHaveLength(0);
+    });
+
+    it('mixta: el replay devuelve EXACTAMENTE acumulación + canje (no solo la acumulación)', async () => {
+      const accrual = makeMovement({
+        type: 'accrual',
+        idempotencyKey: 'op-mix',
+        id: 'acc-1',
+        points: 15,
+      });
+      const redeem = makeMovement({
+        type: 'redeem',
+        idempotencyKey: 'op-mix:redeem',
+        id: 'rdm-1',
+        points: -100,
+      });
+      const manager = {
+        findOne: jest.fn().mockImplementation((entity: new () => unknown) => {
+          if (entity === Customer) return Promise.resolve(makeCustomer());
+          if (entity === PointsBalance) return Promise.resolve(makeBalance(165));
+          return Promise.resolve(null);
+        }),
+        find: jest.fn().mockImplementation(() => Promise.resolve([accrual, redeem])),
+        create: jest
+          .fn()
+          .mockImplementation((_: unknown, data: unknown) => ({ ...(data as object) })),
+        save: jest
+          .fn()
+          .mockImplementation((obj: unknown) => Promise.resolve({ ...(obj as object), id: 'x' })),
+      } as unknown as jest.Mocked<EntityManager>;
+      (customerRepo.manager.transaction as jest.Mock).mockImplementation(
+        async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
+      );
+
+      const result = await service.operation({
+        customerDni: '12345678',
+        accrualPoints: 15,
+        redemptionPoints: 100,
+        sede: 'pisac',
+        userRef: 'cajero1',
+        idempotencyKey: 'op-mix',
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result.map((m) => m.type)).toEqual(['accrual', 'redeem']);
+    });
+  });
+
+  // ── reverse: contrato PointsMovement pelado — Fix #2 ───────────────────────
+
+  describe('reverse contrato (Fix #2)', () => {
+    it('no-op (C15): devuelve un PointsMovement de reversa de 0 puntos (saldo intacto)', async () => {
+      const manager = makeManager(makeCustomer(), makeBalance(50), null);
+      (customerRepo.manager.transaction as jest.Mock).mockImplementation(
+        async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
+      );
+
+      const result = await service.reverse({
+        customerDni: '12345678',
+        saleRef: 'SALE-NO-EXISTE',
+        userRef: 'cajero1',
+        idempotencyKey: 'rev-noop',
+        sede: 'pisac',
+      });
+
+      // Contrato: siempre un PointsMovement, nunca {isNoOp}.
+      expect(result.type).toBe('reversal');
+      expect(result.points).toBe(0);
+      expect(result.balanceBefore).toBe(50);
+      expect(result.balanceAfter).toBe(50);
+    });
+
+    it('reversa válida: devuelve el PointsMovement de reversa', async () => {
+      const customer = makeCustomer();
+      const balance = makeBalance(50);
+      const accrualMovement = makeMovement({ type: 'accrual', points: 20, saleRef: 'SALE-1' });
+      const manager = {
+        findOne: jest
+          .fn()
+          .mockImplementation(
+            (entity: new () => unknown, opts: { where: Record<string, unknown> }) => {
+              if (entity === Customer) return Promise.resolve(customer);
+              if (entity === PointsBalance) return Promise.resolve(balance);
+              if (entity === PointsMovement) {
+                if ('idempotencyKey' in opts.where) return Promise.resolve(null);
+                if ('saleRef' in opts.where) return Promise.resolve(accrualMovement);
+              }
+              return Promise.resolve(null);
+            },
+          ),
+        create: jest
+          .fn()
+          .mockImplementation((_: unknown, data: unknown) => ({ ...(data as object) })),
+        save: jest
+          .fn()
+          .mockImplementation((obj: unknown) =>
+            Promise.resolve({ ...(obj as object), id: 'rev-id' }),
+          ),
+      } as unknown as jest.Mocked<EntityManager>;
+      (customerRepo.manager.transaction as jest.Mock).mockImplementation(
+        async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
+      );
+
+      const result = await service.reverse({
+        customerDni: '12345678',
+        saleRef: 'SALE-1',
+        userRef: 'cajero1',
+        idempotencyKey: 'rev-ok',
+        sede: 'pisac',
+      });
+
+      expect(result.type).toBe('reversal');
+      expect(result.balanceAfter).toBe(30);
+    });
+  });
+
+  // ── withRetry: detección por instanceof / código 23505 — Fix #6 ────────────
+
+  describe('withRetry (Fix #6)', () => {
+    it('reintenta ante OptimisticLockVersionMismatchError (por instanceof, no por mensaje)', async () => {
+      const { OptimisticLockVersionMismatchError } = await import('typeorm');
+      let attempts = 0;
+
+      // Usamos accrue como vehículo: la primera llamada lanza lock mismatch
+      // (con mensaje genérico, para probar que NO se detecta por substring),
+      // la segunda corre normal.
+      (customerRepo.manager.transaction as jest.Mock).mockImplementation(
+        async (fn: (m: EntityManager) => Promise<unknown>) => {
+          attempts++;
+          if (attempts < 2) {
+            throw new OptimisticLockVersionMismatchError('PointsBalance', 1, 2);
+          }
+          return fn(makeManager(makeCustomer(), makeBalance(50)));
+        },
+      );
+
+      const result = await service.accrue({
+        customerDni: '12345678',
+        points: 10,
+        sede: 'pisac',
+        userRef: 'cajero1',
+        idempotencyKey: 'retry-1',
+      });
+
+      expect(attempts).toBe(2);
+      expect(result.type).toBe('accrual');
     });
   });
 });

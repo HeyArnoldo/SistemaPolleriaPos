@@ -7,7 +7,12 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import {
+  EntityManager,
+  OptimisticLockVersionMismatchError,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { Customer } from '../../customers/entities/customer.entity';
 import { PointsBalance } from '../entities/points-balance.entity';
 import { PointsMovement, MovementType } from '../entities/points-movement.entity';
@@ -69,13 +74,19 @@ export interface VoidInput {
   sede: string;
 }
 
-export interface ReverseResult {
-  isNoOp: boolean;
-  movement?: PointsMovement;
-}
-
 /** Máximo de reintentos por conflicto de versión en optimistic lock. */
 const MAX_LOCK_RETRIES = 3;
+
+/** SQLSTATE de Postgres para violación de restricción unique. */
+const PG_UNIQUE_VIOLATION = '23505';
+
+/** Detecta una violación de unique constraint de Postgres (SQLSTATE 23505). */
+function isUniqueViolation(err: unknown): boolean {
+  if (!(err instanceof QueryFailedError)) return false;
+  const driverError = (err as QueryFailedError & { driverError?: { code?: string } }).driverError;
+  const code = driverError?.code ?? (err as unknown as { code?: string }).code;
+  return code === PG_UNIQUE_VIOLATION;
+}
 
 /**
  * Servicio de operaciones de puntos del hub.
@@ -117,6 +128,41 @@ export class PointsService {
     return manager.save(movement);
   }
 
+  /**
+   * Inserta un movimiento garantizando idempotencia atómica (D15).
+   *
+   * El índice único sobre `idempotency_key` es la red de seguridad: si dos
+   * requests concurrentes con la misma clave intentan insertar, Postgres lanza
+   * 23505 en el segundo. En ese caso re-leemos el movimiento ya commiteado y lo
+   * retornamos idempotentemente, sin doble aplicación ni 500.
+   *
+   * Devuelve `{ movement, created }` para que el caller sepa si fue inserción
+   * nueva (y debe actualizar el saldo) o un replay (saldo intacto).
+   */
+  private async insertMovementIdempotent(
+    manager: EntityManager,
+    data: Partial<PointsMovement>,
+  ): Promise<{ movement: PointsMovement; created: boolean }> {
+    const idempotencyKey = data.idempotencyKey ?? null;
+    try {
+      const movement = await this.saveMovement(manager, data);
+      return { movement, created: true };
+    } catch (err: unknown) {
+      if (isUniqueViolation(err) && idempotencyKey) {
+        const existing = await manager.findOne(PointsMovement, {
+          where: { idempotencyKey },
+        });
+        if (existing) {
+          this.logger.log(
+            `[idempotent] Unique violation en clave ${idempotencyKey} — re-leído movimiento existente`,
+          );
+          return { movement: existing, created: false };
+        }
+      }
+      throw err;
+    }
+  }
+
   private async updateBalance(
     manager: EntityManager,
     balance: PointsBalance,
@@ -149,9 +195,10 @@ export class PointsService {
         const balanceBefore = balance.balance;
         const balanceAfter = balanceBefore + input.points;
 
-        await this.updateBalance(manager, balance, balanceAfter);
-
-        const movement = await this.saveMovement(manager, {
+        // Insertamos el movimiento ANTES de tocar el saldo: si una request
+        // concurrente ya insertó la misma clave (23505), re-leemos y NO
+        // aplicamos el saldo (lo aplicó la request ganadora).
+        const { movement, created } = await this.insertMovementIdempotent(manager, {
           customerId: customer.id,
           type: 'accrual' as MovementType,
           points: input.points,
@@ -164,6 +211,9 @@ export class PointsService {
           idempotencyKey: input.idempotencyKey,
           isVoided: false,
         });
+        if (!created) return movement;
+
+        await this.updateBalance(manager, balance, balanceAfter);
 
         this.logger.log(
           `[accrue] DNI ${input.customerDni}: +${input.points} pts (${balanceBefore} → ${balanceAfter})`,
@@ -196,9 +246,8 @@ export class PointsService {
         }
 
         const balanceAfter = balanceBefore - input.points;
-        await this.updateBalance(manager, balance, balanceAfter);
 
-        const movement = await this.saveMovement(manager, {
+        const { movement, created } = await this.insertMovementIdempotent(manager, {
           customerId: customer.id,
           type: 'redeem' as MovementType,
           points: -input.points,
@@ -211,6 +260,9 @@ export class PointsService {
           idempotencyKey: input.idempotencyKey,
           isVoided: false,
         });
+        if (!created) return movement;
+
+        await this.updateBalance(manager, balance, balanceAfter);
 
         this.logger.log(
           `[redeem] DNI ${input.customerDni}: -${input.points} pts (${balanceBefore} → ${balanceAfter})`,
@@ -223,27 +275,33 @@ export class PointsService {
   // ── operation (mixta atómica) ─────────────────────────────────────────────
 
   async operation(input: OperationInput): Promise<PointsMovement[]> {
+    // Keying consistente (D15): la acumulación usa la clave base y el canje
+    // usa `${base}:redeem`. Así la idempotencia funciona también cuando solo
+    // hay canje (accrualPoints === 0) y el replay puede recuperar el set exacto.
+    const accrualKey = input.idempotencyKey;
+    const redeemKey = `${input.idempotencyKey}:redeem`;
+
     return this.withRetry(() =>
       this.customerRepo.manager.transaction(async (manager) => {
-        // Idempotencia por la clave base — si existe alguno de los movimientos, retornamos.
-        const existing = await manager.findOne(PointsMovement, {
-          where: { idempotencyKey: input.idempotencyKey },
-        });
-        if (existing) {
+        // Replay: si ya existe CUALQUIERA de los movimientos de esta operación,
+        // devolvemos exactamente el mismo set ordenado (acumulación, luego canje).
+        const replayed = await this.findOperationMovements(manager, accrualKey, redeemKey);
+        if (replayed.length > 0) {
           this.logger.log(`[operation] Idempotencia: clave ${input.idempotencyKey} ya procesada`);
-          return [existing];
+          return replayed;
         }
 
         const { customer, balance } = await this.resolveCustomer(manager, input.customerDni);
         let currentBalance = balance.balance;
         const movements: PointsMovement[] = [];
+        let replayedDuringInsert = false;
 
         // Paso 1: acumulación.
         if (input.accrualPoints > 0) {
           const balanceBefore = currentBalance;
           currentBalance += input.accrualPoints;
 
-          const accrual = await this.saveMovement(manager, {
+          const { movement, created } = await this.insertMovementIdempotent(manager, {
             customerId: customer.id,
             type: 'accrual' as MovementType,
             points: input.accrualPoints,
@@ -253,10 +311,11 @@ export class PointsService {
             userRef: input.userRef,
             saleRef: input.saleRef ?? null,
             detail: input.detail ?? null,
-            idempotencyKey: input.idempotencyKey,
+            idempotencyKey: accrualKey,
             isVoided: false,
           });
-          movements.push(accrual);
+          if (!created) replayedDuringInsert = true;
+          movements.push(movement);
         }
 
         // Paso 2: canje (en la misma tx — si falla, se revierte la acumulación).
@@ -269,7 +328,7 @@ export class PointsService {
           const balanceBefore = currentBalance;
           currentBalance -= input.redemptionPoints;
 
-          const redemption = await this.saveMovement(manager, {
+          const { movement, created } = await this.insertMovementIdempotent(manager, {
             customerId: customer.id,
             type: 'redeem' as MovementType,
             points: -input.redemptionPoints,
@@ -279,10 +338,18 @@ export class PointsService {
             userRef: input.userRef,
             saleRef: input.saleRef ?? null,
             detail: input.detail ?? null,
-            idempotencyKey: `${input.idempotencyKey}:redeem`,
+            idempotencyKey: redeemKey,
             isVoided: false,
           });
-          movements.push(redemption);
+          if (!created) replayedDuringInsert = true;
+          movements.push(movement);
+        }
+
+        // Si alguna inserción chocó con 23505 (carrera), la operación ya fue
+        // aplicada por la request ganadora: NO aplicamos el saldo de nuevo y
+        // devolvemos el set exacto persistido.
+        if (replayedDuringInsert) {
+          return this.findOperationMovements(manager, accrualKey, redeemKey);
         }
 
         balance.balance = currentBalance;
@@ -293,17 +360,37 @@ export class PointsService {
     );
   }
 
+  /**
+   * Recupera los movimientos de una operación mixta por sus claves de
+   * idempotencia, en orden determinista: acumulación primero, luego canje.
+   */
+  private async findOperationMovements(
+    manager: EntityManager,
+    accrualKey: string,
+    redeemKey: string,
+  ): Promise<PointsMovement[]> {
+    const found = await manager.find(PointsMovement, {
+      where: [{ idempotencyKey: accrualKey }, { idempotencyKey: redeemKey }],
+    });
+    const accrual = found.find((m) => m.idempotencyKey === accrualKey);
+    const redeem = found.find((m) => m.idempotencyKey === redeemKey);
+    const ordered: PointsMovement[] = [];
+    if (accrual) ordered.push(accrual);
+    if (redeem) ordered.push(redeem);
+    return ordered;
+  }
+
   // ── reverse ───────────────────────────────────────────────────────────────
 
-  async reverse(input: ReverseInput): Promise<ReverseResult> {
+  async reverse(input: ReverseInput): Promise<PointsMovement> {
     return this.withRetry(() =>
       this.customerRepo.manager.transaction(async (manager) => {
-        // Idempotencia: si ya existe la reversa, retornarla.
+        // Idempotencia: si ya existe la reversa, retornarla (contrato pelado).
         const existingReverse = await manager.findOne(PointsMovement, {
           where: { idempotencyKey: input.idempotencyKey },
         });
         if (existingReverse) {
-          return { isNoOp: false, movement: existingReverse };
+          return existingReverse;
         }
 
         const { customer, balance } = await this.resolveCustomer(manager, input.customerDni);
@@ -318,16 +405,33 @@ export class PointsService {
           },
         });
 
-        // C15: no-op si no hubo acumulación previa.
+        const balanceBefore = balance.balance;
+
+        // C15: no-op si no hubo acumulación previa. En vez de un objeto especial,
+        // creamos un movimiento de reversa de 0 puntos (saldo intacto) para que el
+        // contrato PointsMovement se cumpla SIEMPRE (lo que el client espera).
         if (!accrual) {
           this.logger.log(
             `[reverse] No-op para DNI ${input.customerDni}, sale_ref ${input.saleRef} — sin acumulación previa`,
           );
-          return { isNoOp: true };
+          const { movement } = await this.insertMovementIdempotent(manager, {
+            customerId: customer.id,
+            type: 'reversal' as MovementType,
+            points: 0,
+            balanceBefore,
+            balanceAfter: balanceBefore,
+            sede: input.sede,
+            userRef: input.userRef,
+            saleRef: input.saleRef,
+            detail:
+              input.detail ?? 'No-op: sin acumulación previa para este sale_ref; saldo intacto',
+            idempotencyKey: input.idempotencyKey,
+            isVoided: false,
+          });
+          return movement;
         }
 
         // Topar en 0 si la reversa excedería el saldo (D6).
-        const balanceBefore = balance.balance;
         const maxReversable = balanceBefore; // No puede quedar negativo.
         const actualReverse = Math.min(accrual.points, maxReversable);
         const balanceAfter = balanceBefore - actualReverse;
@@ -337,9 +441,7 @@ export class PointsService {
             ? `Reversa parcial: se restaron ${actualReverse} pts (se solicitaron ${accrual.points}); saldo topado en 0`
             : (input.detail ?? null);
 
-        await this.updateBalance(manager, balance, balanceAfter);
-
-        const movement = await this.saveMovement(manager, {
+        const { movement, created } = await this.insertMovementIdempotent(manager, {
           customerId: customer.id,
           type: 'reversal' as MovementType,
           points: -actualReverse,
@@ -352,8 +454,11 @@ export class PointsService {
           idempotencyKey: input.idempotencyKey,
           isVoided: false,
         });
+        if (!created) return movement;
 
-        return { isNoOp: false, movement };
+        await this.updateBalance(manager, balance, balanceAfter);
+
+        return movement;
       }),
     );
   }
@@ -473,11 +578,11 @@ export class PointsService {
       try {
         return await fn();
       } catch (err: unknown) {
+        // Conflicto de concurrencia reintentable: mismatch de versión por
+        // optimistic lock (por instanceof, no por substring del mensaje) o una
+        // violación unique residual (23505) que no se resolvió por re-lectura.
         const isLockConflict =
-          err instanceof Error &&
-          (err.message.includes('conflict') ||
-            err.message.includes('version') ||
-            err.message.includes('OptimisticLockVersionMismatchError'));
+          err instanceof OptimisticLockVersionMismatchError || isUniqueViolation(err);
         if (!isLockConflict) throw err;
         lastErr = err;
         this.logger.warn(
