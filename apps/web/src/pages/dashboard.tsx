@@ -247,7 +247,7 @@ export default function DashboardPage() {
                           {formatCurrency(isSale ? tx.netAmount : tx.amount)}
                         </TableCell>
                         <TableCell className={`text-right font-semibold ${tone}`}>
-                          {formatCurrency(isSale ? tx.netAmount : tx.amount)}
+                          {formatCurrency(isSale ? tx.grossAmount : tx.amount)}
                         </TableCell>
                       </TableRow>
                     );

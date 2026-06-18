@@ -24,7 +24,7 @@ export const createProduct = async (payload: {
   isActive?: boolean;
 }): Promise<Product> => {
   const { data } = await api.post('/inventory/products', payload);
-  return data;
+  return normalizeProduct(data as Product);
 };
 
 export const updateProduct = async (
@@ -38,7 +38,7 @@ export const updateProduct = async (
   }>,
 ): Promise<Product> => {
   const { data } = await api.patch(`/inventory/products/${id}`, payload);
-  return data;
+  return normalizeProduct(data as Product);
 };
 
 export const deactivateProduct = async (id: number): Promise<void> => {

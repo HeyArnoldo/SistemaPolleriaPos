@@ -126,5 +126,7 @@ export const getDayTotals = (
 };
 
 export const getDayExpensesTotal = (expenses: Expense[]): number => {
-  return expenses.reduce((sum, e) => sum + (e.amount ?? 0), 0);
+  // amount is a decimal serialized as a string by the API; coerce before adding
+  // or `0 + "15.50"` concatenates instead of summing.
+  return expenses.reduce((sum, e) => sum + Number(e.amount ?? 0), 0);
 };

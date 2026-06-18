@@ -96,10 +96,10 @@ export const calcNetFromGross = (gross: number, commissionPercentage: number) =>
 export const round2 = (value: number) => Number(value.toFixed(2));
 
 export const getCashMethod = (methods: PaymentMethod[]) =>
-  methods.find((method) => isCashMethodName(method.name));
+  methods.find((method) => method.isActive && isCashMethodName(method.name));
 
 export const getYapeMethod = (methods: PaymentMethod[]) =>
-  methods.find((method) => isYapePlinMethodName(method.name));
+  methods.find((method) => method.isActive && isYapePlinMethodName(method.name));
 
 const getDefaultSingleMethodId = (methods: PaymentMethod[]) => {
   const cash = getCashMethod(methods);
