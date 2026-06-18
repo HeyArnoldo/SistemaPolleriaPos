@@ -101,21 +101,42 @@ export class SalesService {
     });
   }
 
-  async syncSales(input: SyncSalesDto, user: User): Promise<{ created: number; skipped: number }> {
-    let created = 0;
+  async syncSales(
+    input: SyncSalesDto,
+    user: User,
+  ): Promise<{
+    success: number;
+    skipped: number;
+    failed: { saleNumber?: string; error: string }[];
+    message: string;
+  }> {
+    let success = 0;
     let skipped = 0;
+    const failed: { saleNumber?: string; error: string }[] = [];
     for (const dto of input.sales) {
-      if (dto.saleNumber) {
-        const existing = await this.saleRepo.findOne({ where: { saleNumber: dto.saleNumber } });
-        if (existing) {
-          skipped++;
-          continue;
+      try {
+        if (dto.saleNumber) {
+          const existing = await this.saleRepo.findOne({ where: { saleNumber: dto.saleNumber } });
+          if (existing) {
+            skipped++;
+            continue;
+          }
         }
+        await this.createSale(dto, user);
+        success++;
+      } catch (e) {
+        failed.push({
+          saleNumber: dto.saleNumber,
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
-      await this.createSale(dto, user);
-      created++;
     }
-    return { created, skipped };
+    return {
+      success,
+      skipped,
+      failed,
+      message: `${success} creadas, ${skipped} duplicadas, ${failed.length} con error`,
+    };
   }
 
   async findAll(filter: SalesFilter): Promise<{ data: Sale[]; total: number }> {
