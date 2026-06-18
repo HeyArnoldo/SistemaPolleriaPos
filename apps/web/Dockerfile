@@ -8,17 +8,21 @@ ENV HUSKY=0
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/tsconfig/package.json packages/tsconfig/
 COPY packages/contracts/package.json packages/contracts/
+COPY packages/carbopuntos-contracts/package.json packages/carbopuntos-contracts/
 COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile --filter @app/web...
 
 COPY packages/tsconfig packages/tsconfig
 COPY packages/contracts packages/contracts
+COPY packages/carbopuntos-contracts packages/carbopuntos-contracts
 COPY apps/web apps/web
 
 # URL absoluta de la API: queda horneada en el bundle (build-time, no runtime).
 ARG VITE_API_URL=
 ENV VITE_API_URL=$VITE_API_URL
-RUN pnpm --filter @app/contracts build && pnpm --filter @app/web build
+RUN pnpm --filter @app/contracts build && \
+    pnpm --filter @app/carbopuntos-contracts build && \
+    pnpm --filter @app/web build
 
 # ── Runtime: nginx sirviendo estáticos ────────────────────────────
 FROM nginx:1.27-alpine AS runtime

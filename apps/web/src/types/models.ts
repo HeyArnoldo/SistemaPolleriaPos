@@ -12,6 +12,8 @@ export interface Product {
   id: number;
   name: string;
   price: number;
+  /** Points earned when this product is sold. 0 or null means no points. */
+  puntaje?: number | null;
   imageUrl?: string | null;
   isActive: boolean;
   createdAt: string;
@@ -41,12 +43,21 @@ export interface CreatePaymentDTO {
   transferTime?: string;
 }
 
+export interface SaleRedemption {
+  rewardId: string;
+  points: number;
+}
+
 export interface CreateSaleDTO {
   items: CreateSaleItemDTO[];
   payments: CreatePaymentDTO[];
   notes?: string;
   saleNumber?: string;
   createdAt?: string;
+  /** DNI of the customer being served (optional — no customer = no points). */
+  customer_dni?: string;
+  /** Rewards being redeemed in this sale (optional). */
+  redemptions?: SaleRedemption[];
 }
 
 export interface CancelSaleDTO {
@@ -88,6 +99,17 @@ export interface Sale {
   cancelReason?: string;
   canceledAt?: string;
   createdAt: string;
+  /** DNI of the linked customer (if any). */
+  customer_dni?: string | null;
+  /** Carbopuntos data returned after the sale is registered. */
+  carbopuntos?: {
+    customerName?: string;
+    pointsBefore?: number;
+    pointsEarned?: number;
+    pointsRedeemed?: number;
+    pointsAfter?: number;
+    redemptions?: SaleRedemption[];
+  } | null;
 }
 
 export interface Expense {

@@ -17,6 +17,7 @@ const ALL_MENU_ITEMS = [
   { title: 'Caja', path: '/caja', icon: '💰', routeKey: 'caja' as const },
   { title: 'Egresos', path: '/egresos', icon: '💵', routeKey: 'egresos' as const },
   { title: 'Productos', path: '/productos', icon: '📦', routeKey: 'productos' as const },
+  { title: 'Clientes', path: '/clientes', icon: '🎯', routeKey: 'clientes' as const },
   { title: 'Usuarios', path: '/usuarios', icon: '👥', routeKey: 'usuarios' as const },
   {
     title: 'Configuración',

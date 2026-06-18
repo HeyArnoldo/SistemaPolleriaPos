@@ -8,7 +8,8 @@ export type RouteKey =
   | 'historial'
   | 'productos'
   | 'usuarios'
-  | 'configuracion';
+  | 'configuracion'
+  | 'clientes';
 
 export type ActionKey =
   | 'products:read'
@@ -29,6 +30,7 @@ const ROUTE_ACCESS: Record<RouteKey, UserRole[]> = {
   productos: [UserRole.Admin],
   usuarios: [UserRole.Admin],
   configuracion: [UserRole.Admin],
+  clientes: [UserRole.Admin],
 };
 
 const ACTION_ACCESS: Record<ActionKey, UserRole[]> = {

@@ -15,6 +15,12 @@ export const QUERY_KEYS = {
   biDetail: (params?: object) => ['bi-detail', params] as const,
   biCommissions: (params?: object) => ['bi-commissions', params] as const,
   biTrends: (params?: object) => ['bi-trends', params] as const,
+  // Carbopuntos
+  customers: (q?: string) => ['carbopuntos-customers', q] as const,
+  customer: (dni: string) => ['carbopuntos-customer', dni] as const,
+  customerHistory: (dni: string) => ['carbopuntos-customer-history', dni] as const,
+  customerBalance: (dni: string) => ['carbopuntos-customer-balance', dni] as const,
+  rewards: ['carbopuntos-rewards'] as const,
 } as const;
 
 /**

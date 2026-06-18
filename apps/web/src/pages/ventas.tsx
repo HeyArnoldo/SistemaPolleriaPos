@@ -10,19 +10,25 @@ import { useGetPaymentMethods } from '@/hooks/use-payment-methods';
 import { useCreateSale } from '@/hooks/use-sales';
 import { usePaymentState } from '@/hooks/use-payment-state';
 import { useConnectivity } from '@/hooks/use-connectivity';
+import { useGetRewards } from '@/hooks/use-rewards';
 import { ProductGrid } from '@/components/dashboard/ventas/product-grid';
 import { CartItemRow } from '@/components/dashboard/ventas/cart-item-row';
 import { PaymentForm } from '@/components/dashboard/ventas/payment-form';
 import { CategoryFilters } from '@/components/dashboard/ventas/category-filters';
 import { OfflineBanner } from '@/components/dashboard/ventas/offline-banner';
 import { TicketPreviewDialog } from '@/components/dashboard/ventas/ticket-preview-dialog';
+import { CustomerPanel } from '@/components/dashboard/ventas/customer-panel';
+import { RewardsModal } from '@/components/dashboard/ventas/rewards-modal';
+import { ConfirmRedemptionModal } from '@/components/dashboard/ventas/confirm-redemption-modal';
 import { generateSaleNumber } from '@/lib/ventas';
 import { getErrorMessage } from '@/lib/errors';
 import { enqueueSale } from '@/lib/queue-manager';
 import { buildTicketHtml } from '@/lib/ticket';
 import { getPrintSettings } from '@/lib/print-settings';
 import { printTicket } from '@/lib/printing';
+import { calcPointsToEarn, calcRedemptionCost, buildRedemptionsPayload } from '@/hooks/use-points';
 import type { Sale } from '@/types/models';
+import type { Customer, Reward } from '@app/carbopuntos-contracts';
 
 export default function VentasPage() {
   const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
@@ -31,12 +37,20 @@ export default function VentasPage() {
   const { data: paymentMethods = [] } = useGetPaymentMethods();
   const { mutate: createSale, isPending: isSubmitting } = useCreateSale();
   const { isOnline } = useConnectivity();
+  const { data: rewards = [] } = useGetRewards(true);
 
   const [notesInput, setNotesInput] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewSale, setPreviewSale] = useState<Sale | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+
+  // CarboPuntos state
+  const [linkedCustomer, setLinkedCustomer] = useState<Customer | null>(null);
+  const [customerBalance, setCustomerBalance] = useState(0);
+  const [pendingRewards, setPendingRewards] = useState<Reward[]>([]);
+  const [rewardsOpen, setRewardsOpen] = useState(false);
+  const [confirmRedemptionOpen, setConfirmRedemptionOpen] = useState(false);
 
   const {
     paymentMode,
@@ -74,7 +88,21 @@ export default function VentasPage() {
     return true;
   });
 
-  const isSubmitDisabled = items.length === 0 || total <= 0 || isSubmitting || !canSubmit;
+  // Solo-canje mode: no cart items but has pending rewards and a linked customer
+  const isOnlyRedemption = items.length === 0 && pendingRewards.length > 0 && !!linkedCustomer;
+
+  const canRegister = items.length > 0 || isOnlyRedemption;
+  const isSubmitDisabled =
+    !canRegister || isSubmitting || (items.length > 0 && (!canSubmit || total <= 0));
+
+  const pointsToEarn = calcPointsToEarn(items);
+  const redemptionCost = calcRedemptionCost(pendingRewards);
+
+  const resetCarbopuntos = () => {
+    setLinkedCustomer(null);
+    setCustomerBalance(0);
+    setPendingRewards([]);
+  };
 
   const handlePrintSale = (sale: Sale) => {
     const settings = getPrintSettings();
@@ -103,21 +131,16 @@ export default function VentasPage() {
     });
   };
 
-  const handleSubmit = async () => {
-    if (items.length === 0) {
-      toast.error('Agrega al menos un producto');
-      return;
-    }
-    if (!canSubmit) {
-      toast.error('Completa los datos de pago correctamente');
+  const doRegisterSale = () => {
+    const payments = isOnlyRedemption ? [] : (buildPaymentsPayload() ?? undefined);
+
+    if (!isOnlyRedemption && !payments) {
+      // buildPaymentsPayload already shows a specific toast
       return;
     }
 
-    const payments = buildPaymentsPayload();
-    if (!payments) {
-      // buildPaymentsPayload already shows a specific toast error
-      return;
-    }
+    const redemptions =
+      pendingRewards.length > 0 ? buildRedemptionsPayload(pendingRewards) : undefined;
 
     const salePayload = {
       saleNumber: generateSaleNumber(),
@@ -126,31 +149,58 @@ export default function VentasPage() {
         quantity: i.quantity,
         unitPrice: i.product.price,
       })),
-      payments,
+      payments: payments ?? [],
       ...(notesInput.trim() ? { notes: notesInput.trim() } : {}),
+      ...(linkedCustomer ? { customer_dni: linkedCustomer.dni } : {}),
+      ...(redemptions ? { redemptions } : {}),
     };
 
     if (!isOnline) {
-      await enqueueSale(salePayload.saleNumber, salePayload);
-      toast.success('Venta guardada sin conexión — se enviará al reconectarse');
-      clearCart();
-      resetPayment();
-      setNotesInput('');
+      void enqueueSale(salePayload.saleNumber ?? '', salePayload).then(() => {
+        toast.success('Venta guardada sin conexión — se enviará al reconectarse');
+        clearCart();
+        resetPayment();
+        setNotesInput('');
+        resetCarbopuntos();
+      });
       return;
     }
 
     createSale(salePayload, {
       onSuccess: (sale) => {
-        toast.success('Venta registrada correctamente');
+        const isRedeem = isOnlyRedemption;
+        if (isRedeem) {
+          toast.success(`Canje registrado — −${redemptionCost} pts`);
+        } else {
+          toast.success(
+            `Venta registrada${pointsToEarn > 0 && linkedCustomer ? ` · +${pointsToEarn} pts` : ''}`,
+          );
+        }
         handlePrintSale(sale);
         clearCart();
         resetPayment();
         setNotesInput('');
+        resetCarbopuntos();
       },
       onError: (err) => {
         toast.error(getErrorMessage(err, 'Error al registrar la venta'));
       },
     });
+  };
+
+  const handleSubmit = async () => {
+    if (!canRegister) {
+      toast.error('Agrega al menos un producto o un canje');
+      return;
+    }
+
+    if (pendingRewards.length > 0 && linkedCustomer) {
+      // Show confirmation modal before processing redemptions
+      setConfirmRedemptionOpen(true);
+      return;
+    }
+
+    doRegisterSale();
   };
 
   return (
@@ -172,7 +222,7 @@ export default function VentasPage() {
           />
         </div>
 
-        {/* Right column: sticky cart */}
+        {/* Right column: sticky cart + carbopuntos */}
         <Card className="overflow-hidden lg:sticky lg:top-4 self-start">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -184,8 +234,8 @@ export default function VentasPage() {
           </CardHeader>
 
           <CardContent className="p-0">
-            {items.length === 0 ? (
-              <div className="py-10 text-center text-muted-foreground">Carrito vacio</div>
+            {items.length === 0 && !isOnlyRedemption ? (
+              <div className="py-6 text-center text-muted-foreground">Carrito vacio</div>
             ) : (
               <div className="px-4">
                 <div className="divide-y">
@@ -203,35 +253,58 @@ export default function VentasPage() {
           </CardContent>
 
           <CardContent className="space-y-4">
-            <PaymentForm
-              paymentMethods={paymentMethods}
-              paymentMode={paymentMode}
-              onPaymentModeChange={setPaymentMode}
-              isMixedEnabled={isMixedEnabled}
-              singleMethodId={singleMethodId}
-              onSingleMethodChange={setSingleMethodId}
-              singleCashReceived={singleCashReceived}
-              onSingleCashReceivedChange={setSingleCashReceived}
-              singleTransferTime={singleTransferTime}
-              onSingleTransferTimeChange={setSingleTransferTime}
-              mixedYapeAmount={mixedYapeAmount}
-              onMixedYapeAmountChange={setMixedYapeAmount}
-              mixedCashAmount={mixedCashAmount}
-              onMixedCashAmountChange={setMixedCashAmount}
-              mixedTransferTime={mixedTransferTime}
-              onMixedTransferTimeChange={setMixedTransferTime}
-              paymentSummary={paymentSummary}
-              total={total}
-              singleGrossAmount={singleGrossAmount}
-              singleNetAmount={singleNetAmount}
-              singleCommissionAmount={singleCommissionAmount}
-              mixedYapeGrossAmount={mixedYapeGrossAmount}
-              mixedYapeNetAmountValue={mixedYapeNetAmountValue}
-              mixedYapeCommissionAmount={mixedYapeCommissionAmount}
-              mixedCashAmountValue={mixedCashAmountValue}
-              mixedTotalGross={mixedTotalGross}
-              onRequestSubmit={() => void handleSubmit()}
+            {/* CarboPuntos customer panel */}
+            <CustomerPanel
+              isOnline={isOnline}
+              items={items}
+              linkedCustomer={linkedCustomer}
+              currentBalance={customerBalance}
+              pendingRewards={pendingRewards}
+              onCustomerLinked={(customer, balance) => {
+                setLinkedCustomer(customer);
+                setCustomerBalance(balance);
+              }}
+              onCustomerRemoved={() => {
+                resetCarbopuntos();
+              }}
+              onOpenRewards={() => setRewardsOpen(true)}
+              onRemoveReward={(idx) =>
+                setPendingRewards((prev) => prev.filter((_, i) => i !== idx))
+              }
             />
+
+            {/* Payment form — hidden in solo-canje mode */}
+            {!isOnlyRedemption && (
+              <PaymentForm
+                paymentMethods={paymentMethods}
+                paymentMode={paymentMode}
+                onPaymentModeChange={setPaymentMode}
+                isMixedEnabled={isMixedEnabled}
+                singleMethodId={singleMethodId}
+                onSingleMethodChange={setSingleMethodId}
+                singleCashReceived={singleCashReceived}
+                onSingleCashReceivedChange={setSingleCashReceived}
+                singleTransferTime={singleTransferTime}
+                onSingleTransferTimeChange={setSingleTransferTime}
+                mixedYapeAmount={mixedYapeAmount}
+                onMixedYapeAmountChange={setMixedYapeAmount}
+                mixedCashAmount={mixedCashAmount}
+                onMixedCashAmountChange={setMixedCashAmount}
+                mixedTransferTime={mixedTransferTime}
+                onMixedTransferTimeChange={setMixedTransferTime}
+                paymentSummary={paymentSummary}
+                total={total}
+                singleGrossAmount={singleGrossAmount}
+                singleNetAmount={singleNetAmount}
+                singleCommissionAmount={singleCommissionAmount}
+                mixedYapeGrossAmount={mixedYapeGrossAmount}
+                mixedYapeNetAmountValue={mixedYapeNetAmountValue}
+                mixedYapeCommissionAmount={mixedYapeCommissionAmount}
+                mixedCashAmountValue={mixedCashAmountValue}
+                mixedTotalGross={mixedTotalGross}
+                onRequestSubmit={() => void handleSubmit()}
+              />
+            )}
 
             <Textarea
               placeholder="Notas (opcional)"
@@ -251,6 +324,7 @@ export default function VentasPage() {
                 clearCart();
                 resetPayment();
                 setNotesInput('');
+                resetCarbopuntos();
               }}
             >
               Vaciar
@@ -265,6 +339,11 @@ export default function VentasPage() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Guardando...
                 </>
+              ) : isOnlyRedemption ? (
+                <>
+                  <ShoppingCart className="mr-2 h-4 w-4" />
+                  Registrar canje
+                </>
               ) : (
                 <>
                   <ShoppingCart className="mr-2 h-4 w-4" />
@@ -276,6 +355,7 @@ export default function VentasPage() {
         </Card>
       </div>
 
+      {/* Dialogs */}
       <TicketPreviewDialog
         isOpen={previewOpen}
         onOpenChange={setPreviewOpen}
@@ -283,6 +363,26 @@ export default function VentasPage() {
         previewHtml={previewHtml}
         onPrint={handleConfirmPrint}
       />
+
+      <RewardsModal
+        open={rewardsOpen}
+        onOpenChange={setRewardsOpen}
+        rewards={rewards}
+        currentBalance={customerBalance}
+        pendingRewards={pendingRewards}
+        onSelectReward={(r) => setPendingRewards((prev) => [...prev, r])}
+      />
+
+      {linkedCustomer && (
+        <ConfirmRedemptionModal
+          open={confirmRedemptionOpen}
+          onOpenChange={setConfirmRedemptionOpen}
+          customer={linkedCustomer}
+          currentBalance={customerBalance}
+          pendingRewards={pendingRewards}
+          onConfirm={doRegisterSale}
+        />
+      )}
     </div>
   );
 }
