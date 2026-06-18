@@ -276,6 +276,14 @@ export interface BICommissionsResponse {
   byPaymentMethod: BICommissionsRow[];
 }
 
+// Live auto-update status pushed from the Electron main process.
+export interface UpdateStatus {
+  state: 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+  version?: string;
+  percent?: number;
+  message?: string;
+}
+
 // Electron IPC bridge — defined only when running inside the desktop app
 declare global {
   interface Window {
@@ -294,6 +302,12 @@ declare global {
       onUpdateDownloaded?: (callback: (info: { version?: string }) => void) => () => void;
       /** Quit and install a downloaded update. */
       restartToUpdate?: () => Promise<void>;
+      /** Installed app version (e.g. "0.1.4"). */
+      getAppVersion?: () => Promise<string>;
+      /** Trigger a manual update check; results stream via onUpdateStatus. */
+      checkForUpdates?: () => Promise<void>;
+      /** Subscribe to live update status; returns an unsubscribe function. */
+      onUpdateStatus?: (callback: (status: UpdateStatus) => void) => () => void;
     };
   }
 }
