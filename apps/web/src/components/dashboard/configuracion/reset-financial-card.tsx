@@ -54,7 +54,7 @@ export function ResetFinancialCard() {
 
   return (
     <>
-      <Card className="border-destructive/40">
+      <Card className="border-destructive/40 shadow-sm">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2 text-destructive">
             <AlertTriangle className="h-4 w-4" />

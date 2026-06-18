@@ -8,7 +8,7 @@ import { PrinterAdvancedSettings } from '@/components/dashboard/configuracion/pr
 import { PrinterDebugPanel } from '@/components/dashboard/configuracion/printer-debug-panel';
 import { CashReportCard } from '@/components/dashboard/caja/cash-report-card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ShieldAlert } from 'lucide-react';
+import { Printer, ShieldAlert } from 'lucide-react';
 import { getPrintSettings, savePrintSettings, isElectronEnv } from '@/lib/print-settings';
 import type { PrintSettings } from '@/lib/print-settings';
 
@@ -64,18 +64,27 @@ export default function ConfiguracionPage() {
   }
 
   return (
-    <div className="p-4 space-y-6 max-w-2xl">
-      <h1 className="text-xl font-semibold">Configuración</h1>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="rounded-lg bg-slate-900/90 p-3 text-white shadow-sm">
+          <Printer className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Configuración del sistema
+          </h1>
+          <p className="text-sm text-slate-500">
+            Administra impresión, métodos de pago y herramientas operativas.
+          </p>
+        </div>
+      </div>
 
-      <PaymentMethodsCard />
+      {/* Debug panel (visible only when debugMode is active) */}
+      <PrinterDebugPanel settings={printSettings} printers={printers} isElectron={isElectron} />
 
-      <CashReportCard />
-
-      <ResetFinancialCard />
-
-      <div className="space-y-4">
-        <h2 className="text-base font-semibold text-slate-700">Impresión de tickets</h2>
-
+      {/* Printer settings grid */}
+      <div className="grid gap-4 lg:grid-cols-2">
         <PrinterSettingsCard
           isElectron={isElectron}
           isLoading={loadingPrinters}
@@ -90,9 +99,13 @@ export default function ConfiguracionPage() {
           onSettingsChange={handleSettingsChange}
           isElectron={isElectron}
         />
-
-        <PrinterDebugPanel settings={printSettings} printers={printers} isElectron={isElectron} />
       </div>
+
+      <PaymentMethodsCard />
+
+      <CashReportCard />
+
+      <ResetFinancialCard />
     </div>
   );
 }
