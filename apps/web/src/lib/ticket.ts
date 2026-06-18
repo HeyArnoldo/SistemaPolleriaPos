@@ -5,6 +5,55 @@ import type { PrintSettings } from '@/lib/print-settings';
 const resolvePaymentName = (payment: Sale['payments'][number]): string =>
   payment.paymentMethod?.name?.trim() ?? 'Efectivo';
 
+/**
+ * Builds the CARBOPUNTOS block HTML for a ticket.
+ * Renders Antes / Operación / Ahora when data is confirmed, or a pending
+ * message when the hub was offline and the accrual is queued.
+ */
+const buildCarbopuntosBlock = (sale: Sale): string => {
+  const cp = sale.carbopuntos;
+  if (!cp) return '';
+
+  const lines: string[] = [];
+
+  if (cp.customerName) {
+    lines.push(`<div class="cp-name">${cp.customerName}</div>`);
+  }
+
+  if (cp.pending) {
+    const pts = cp.pointsEarned ?? 0;
+    lines.push(`<div class="cp-pending">+${pts} pts se acreditarán al reconectar</div>`);
+  } else {
+    if (cp.pointsBefore !== undefined) {
+      lines.push(`<div class="cp-row"><span>Antes</span><span>${cp.pointsBefore} pts</span></div>`);
+    }
+    if (cp.pointsEarned !== undefined) {
+      lines.push(
+        `<div class="cp-row cp-earn"><span>Acumulación</span><span>+${cp.pointsEarned} pts</span></div>`,
+      );
+    }
+    if (cp.pointsRedeemed !== undefined) {
+      lines.push(
+        `<div class="cp-row cp-redeem"><span>Canje</span><span>-${cp.pointsRedeemed} pts</span></div>`,
+      );
+    }
+    if (cp.pointsAfter !== undefined) {
+      lines.push(
+        `<div class="cp-row cp-after"><span>Ahora</span><span>${cp.pointsAfter} pts</span></div>`,
+      );
+    }
+  }
+
+  if (lines.length === 0) return '';
+
+  return `
+    <div class="cp-block">
+      <div class="cp-header">CARBOPUNTOS</div>
+      ${lines.join('')}
+    </div>
+  `;
+};
+
 export const buildTicketHtml = (sale: Sale, settings: PrintSettings): string => {
   const ticketWidthMm = settings.ticketWidthMm;
   const ticketPaddingTopMm = settings.paddingTopMm;
@@ -117,6 +166,14 @@ export const buildTicketHtml = (sale: Sale, settings: PrintSettings): string => 
           .label { font-weight: bold; margin-top: 3px; }
           .flex-between { display: flex; justify-content: space-between; font-size: var(--font-small); margin-top: 1px; line-height: 1.25; }
           .payment-details { font-size: var(--font-base); margin-top: 3px; line-height: 1.25; }
+          .cp-block { border-top: 1px dashed #000; margin-top: 4px; padding-top: 3px; font-size: var(--font-small); }
+          .cp-header { font-weight: bold; font-size: var(--font-small); letter-spacing: 0.5px; margin-bottom: 2px; }
+          .cp-name { font-style: italic; margin-bottom: 2px; }
+          .cp-row { display: flex; justify-content: space-between; line-height: 1.3; }
+          .cp-earn span:last-child { font-weight: bold; }
+          .cp-redeem span:last-child { font-weight: bold; }
+          .cp-after { border-top: 1px solid #ccc; margin-top: 2px; padding-top: 2px; font-weight: bold; }
+          .cp-pending { font-style: italic; }
           @page { size: ${ticketWidthMm}mm auto; margin: 0; }
           @media print {
             html, body { width: ${ticketWidthMm}mm; height: auto; margin: 0; }
@@ -158,6 +215,7 @@ export const buildTicketHtml = (sale: Sale, settings: PrintSettings): string => 
           }
         </div>
         ${paymentsHtml}
+        ${buildCarbopuntosBlock(sale)}
         <script>
           (function () {
             try {

@@ -27,6 +27,7 @@ interface ProductFormValues {
   price: string;
   categoryId: string;
   imageUrl?: string;
+  puntaje?: string;
 }
 
 interface ProductFormDialogProps {
@@ -61,9 +62,10 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
           price: String(product.price),
           categoryId: String(product.category?.id ?? ''),
           imageUrl: product.imageUrl ?? '',
+          puntaje: product.puntaje != null ? String(product.puntaje) : '',
         });
       } else {
-        reset({ name: '', price: '', categoryId: '', imageUrl: '' });
+        reset({ name: '', price: '', categoryId: '', imageUrl: '', puntaje: '' });
       }
     }
   }, [open, product, reset]);
@@ -78,6 +80,8 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
       price: parseFloat(values.price),
       categoryId: parseInt(values.categoryId),
       imageUrl: values.imageUrl?.trim() || undefined,
+      puntaje:
+        values.puntaje && values.puntaje.trim() !== '' ? parseInt(values.puntaje, 10) : undefined,
     };
 
     if (isEdit && product) {
@@ -161,6 +165,21 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
           <div className="space-y-1">
             <Label htmlFor="imageUrl">URL de imagen (opcional)</Label>
             <Input id="imageUrl" {...register('imageUrl')} placeholder="https://..." />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="puntaje">Puntos CarboPuntos (opcional)</Label>
+            <Input
+              id="puntaje"
+              type="number"
+              min="0"
+              step="1"
+              {...register('puntaje')}
+              placeholder="0"
+            />
+            <p className="text-xs text-muted-foreground">
+              Puntos que gana el cliente por unidad comprada. Dejar en blanco para 0.
+            </p>
           </div>
 
           <DialogFooter>

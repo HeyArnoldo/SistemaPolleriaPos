@@ -1,4 +1,4 @@
-import type { UserRole } from '@app/contracts';
+import type { UserRole, CreateSaleInput, RedemptionItemInput } from '@app/contracts';
 
 export interface ProductCategory {
   id: number;
@@ -12,6 +12,8 @@ export interface Product {
   id: number;
   name: string;
   price: number;
+  /** Points earned when this product is sold. 0 or null means no points. */
+  puntaje?: number | null;
   imageUrl?: string | null;
   isActive: boolean;
   createdAt: string;
@@ -41,13 +43,23 @@ export interface CreatePaymentDTO {
   transferTime?: string;
 }
 
-export interface CreateSaleDTO {
-  items: CreateSaleItemDTO[];
-  payments: CreatePaymentDTO[];
-  notes?: string;
-  saleNumber?: string;
+/**
+ * A redemption entry as recorded in a sale. Shape is the contract source of
+ * truth (redemptionItemSchema): { description, costPoints }. Sending the wrong
+ * shape is now a compile error (see CreateSaleDTO).
+ */
+export type SaleRedemption = RedemptionItemInput;
+
+/**
+ * Sale creation payload. Derived from the Zod contract (createSaleSchema) so the
+ * web payload can NEVER drift from server validation — a mismatched shape is a
+ * COMPILE ERROR. Notably this enforces `customerDni` (camelCase) and the
+ * `{ description, costPoints }` redemption shape. `createdAt` is widened to also
+ * accept an ISO string (the contract coerces it server-side).
+ */
+export type CreateSaleDTO = Omit<CreateSaleInput, 'createdAt'> & {
   createdAt?: string;
-}
+};
 
 export interface CancelSaleDTO {
   reason: string;
@@ -88,6 +100,19 @@ export interface Sale {
   cancelReason?: string;
   canceledAt?: string;
   createdAt: string;
+  /** DNI of the linked customer (if any). */
+  customer_dni?: string | null;
+  /** Carbopuntos data returned after the sale is registered. */
+  carbopuntos?: {
+    customerName?: string;
+    pointsBefore?: number;
+    pointsEarned?: number;
+    pointsRedeemed?: number;
+    pointsAfter?: number;
+    /** True when the hub was unreachable and the accrual was queued for later sync. */
+    pending?: boolean;
+    redemptions?: SaleRedemption[];
+  } | null;
 }
 
 export interface Expense {

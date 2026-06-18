@@ -281,6 +281,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@app/carbopuntos-contracts':
+        specifier: workspace:*
+        version: link:../../packages/carbopuntos-contracts
       '@app/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

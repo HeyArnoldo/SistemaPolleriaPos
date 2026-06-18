@@ -131,13 +131,28 @@ describe('CarbopuntosProxyController', () => {
   // -------------------------------------------------------------------------
 
   describe('GET /carbopuntos/customers/:dni', () => {
-    it('calls client.getBalance and returns customer + balance', async () => {
+    it('calls getBalance + search and returns { dni, balance, customer }', async () => {
       mockClient.getBalance.mockResolvedValue(fakeBalance);
+      mockClient.search.mockResolvedValue([fakeCustomer]);
 
-      const result = await controller.getCustomerBalance('12345678');
+      const result = await controller.getCustomerByDni('12345678');
 
       expect(mockClient.getBalance).toHaveBeenCalledWith('12345678');
-      expect(result).toEqual({ dni: '12345678', balance: fakeBalance });
+      expect(mockClient.search).toHaveBeenCalledWith({ q: '12345678' });
+      expect(result).toEqual({
+        dni: '12345678',
+        balance: fakeBalance.balance,
+        customer: fakeCustomer,
+      });
+    });
+
+    it('returns customer: null when search returns no match for the DNI', async () => {
+      mockClient.getBalance.mockResolvedValue(fakeBalance);
+      mockClient.search.mockResolvedValue([]); // No results
+
+      const result = await controller.getCustomerByDni('99999999');
+
+      expect(result).toEqual({ dni: '99999999', balance: fakeBalance.balance, customer: null });
     });
   });
 
