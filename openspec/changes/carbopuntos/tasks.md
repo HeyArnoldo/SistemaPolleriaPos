@@ -114,22 +114,22 @@ antes del lint.
 
 ### Tareas
 
-- [ ] **T3.1** TEST: crear `packages/carbopuntos-client/src/__tests__/client.spec.ts` (vitest,
+- [x] **T3.1** TEST: crear `packages/carbopuntos-client/src/__tests__/client.spec.ts` (vitest,
       mock del fetch) — verificar que el cliente: (a) incluye el header `Bearer <service_key>`,
       (b) lanza `CarbopuntosUnavailableError` si timeout/error de red, (c) valida la respuesta con Zod.
-- [ ] **T3.2** IMPL: crear `packages/carbopuntos-client/package.json` (`@app/carbopuntos-client`,
+- [x] **T3.2** IMPL: crear `packages/carbopuntos-client/package.json` (`@app/carbopuntos-client`,
       deps: `@app/carbopuntos-contracts`, `zod`).
-- [ ] **T3.3** IMPL: `tsup.config.ts`, `tsconfig.json` (patrón de `packages/contracts`).
-- [ ] **T3.4** IMPL: `src/errors.ts` — `CarbopuntosUnavailableError` (timeout/red) y
+- [x] **T3.3** IMPL: `tsup.config.ts`, `tsconfig.json` (patrón de `packages/contracts`).
+- [x] **T3.4** IMPL: `src/errors.ts` — `CarbopuntosUnavailableError` (timeout/red) y
       `CarbopuntosApiError` (respuesta de error del hub).
-- [ ] **T3.5** TEST: `src/__tests__/degradation.spec.ts` — verificar que `CarbopuntosUnavailableError`
+- [x] **T3.5** TEST: `src/__tests__/degradation.spec.ts` — verificar que `CarbopuntosUnavailableError`
       se lanza en timeout y que el caller puede capturarlo sin bloquear la venta.
-- [ ] **T3.6** IMPL: `src/client.ts` — clase `CarbopuntosClient` con `baseUrl` y `serviceKey`.
+- [x] **T3.6** IMPL: `src/client.ts` — clase `CarbopuntosClient` con `baseUrl` y `serviceKey`.
       Timeout configurable (default 4000 ms). Validación request/response con Zod.
       Métodos: `lookupOrAffiliate`, `getBalance`, `search`, `getHistory`, `accrue`, `redeem`,
       `operation`, `reverse`, `adjust`, `voidMovement`.
-- [ ] **T3.7** IMPL: `src/index.ts` (barrel).
-- [ ] **T3.8** VERIFY: `pnpm --filter @app/carbopuntos-client build` compila.
+- [x] **T3.7** IMPL: `src/index.ts` (barrel).
+- [x] **T3.8** VERIFY: `pnpm --filter @app/carbopuntos-client build` compila.
       Tests pasan. Rebase sobre main.
 
 **Hecho cuando:** el cliente compila, el fallback no bloquea la venta, y los tests pasan.
