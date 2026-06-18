@@ -44,6 +44,9 @@ export class Sale {
   @Column({ type: 'varchar', length: 500, nullable: true, default: null })
   notes: string | null;
 
+  @Column({ type: 'varchar', length: 8, nullable: true, default: null, name: 'customer_dni' })
+  customerDni: string | null = null;
+
   @Column({ type: 'boolean', default: false, name: 'is_canceled' })
   isCanceled: boolean;
 
