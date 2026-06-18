@@ -39,6 +39,11 @@ export const envSchema = z.object({
   ADMIN_USERNAME: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   ADMIN_NAME: z.string().optional(),
+
+  // Carbopuntos hub integration (optional — if absent, points are disabled for this sede).
+  CARBOPUNTOS_HUB_URL: z.string().url().optional().or(z.literal('')),
+  CARBOPUNTOS_SERVICE_KEY: z.string().optional(),
+  STORE_ID: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

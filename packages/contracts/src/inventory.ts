@@ -22,6 +22,8 @@ export const createProductSchema = z.object({
   imageUrl: z.string().max(500).nullable().optional(),
   categoryId: z.number().int().positive(),
   isActive: z.boolean().optional(),
+  // Points earned per unit when sold with customer_dni (D3). Default 0.
+  puntaje: z.number().int().min(0).optional().default(0),
 });
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 
@@ -34,6 +36,8 @@ export const productSchema = z.object({
   price: z.number(),
   imageUrl: z.string().nullable(),
   isActive: z.boolean(),
+  // TypeORM can return puntaje as number or coercible string.
+  puntaje: z.coerce.number().int().min(0).optional().default(0),
   category: categorySchema,
   createdAt: z.string(),
   updatedAt: z.string(),
