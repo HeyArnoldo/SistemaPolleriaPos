@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -54,11 +52,9 @@ function KpiCard({ label, value }: { label: string; value: string }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
+        <CardTitle className="text-sm">{label}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-bold">{value}</p>
-      </CardContent>
+      <CardContent className="text-2xl font-bold">{value}</CardContent>
     </Card>
   );
 }
@@ -71,32 +67,30 @@ function TransactionDetailTable({ rows }: { rows: BIDetailTransaction[] }) {
           <TableRow>
             <TableHead>Fecha</TableHead>
             <TableHead>Ticket</TableHead>
-            <TableHead>Método</TableHead>
-            <TableHead className="text-right">Bruto</TableHead>
-            <TableHead className="text-right">Neto</TableHead>
-            <TableHead className="text-right">Comisión</TableHead>
-            <TableHead className="text-right">%</TableHead>
+            <TableHead>Metodo</TableHead>
+            <TableHead>Bruto</TableHead>
+            <TableHead>Neto</TableHead>
+            <TableHead>Comision</TableHead>
+            <TableHead>%</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="h-20 text-center text-sm text-muted-foreground">
+              <TableCell colSpan={7} className="h-20 text-center text-sm text-slate-500">
                 Sin registros para el filtro actual.
               </TableCell>
             </TableRow>
           ) : (
             rows.map((row) => (
               <TableRow key={row.id}>
-                <TableCell className="text-sm">{formatDateTime(row.date)}</TableCell>
+                <TableCell>{formatDateTime(row.date)}</TableCell>
                 <TableCell>{row.saleNumber}</TableCell>
                 <TableCell>{row.paymentMethodName}</TableCell>
-                <TableCell className="text-right">{formatCurrency(row.grossAmount)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(row.netAmount)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(row.commissionAmount)}</TableCell>
-                <TableCell className="text-right">
-                  {Number(row.commissionPercentage ?? 0).toFixed(2)}%
-                </TableCell>
+                <TableCell>{formatCurrency(row.grossAmount)}</TableCell>
+                <TableCell>{formatCurrency(row.netAmount)}</TableCell>
+                <TableCell>{formatCurrency(row.commissionAmount)}</TableCell>
+                <TableCell>{Number(row.commissionPercentage ?? 0).toFixed(2)}%</TableCell>
               </TableRow>
             ))
           )}
@@ -148,9 +142,6 @@ export default function HistorialPage() {
     commissionsQuery.isLoading ||
     trendsQuery.isLoading;
 
-  const isError =
-    summaryQuery.isError || detailQuery.isError || commissionsQuery.isError || trendsQuery.isError;
-
   const togglePaymentMethod = (id: number, checked: boolean) => {
     setPage(1);
     setPaymentMethodIds((current) => {
@@ -172,20 +163,11 @@ export default function HistorialPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Historial BI</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900">BI / Historial</h1>
+        <p className="text-sm text-slate-500">
           Analítica de ventas, comisiones y tendencias por método de pago.
         </p>
       </div>
-
-      {isError && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Error al cargar los datos. Verifica la conexión e intenta nuevamente.
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Filters */}
       <Card>
@@ -194,7 +176,7 @@ export default function HistorialPage() {
           <CardDescription>Aplica periodo, agrupación, métodos y paginación.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
             <div className="space-y-1">
               <Label>Periodo</Label>
               <Select
@@ -298,7 +280,7 @@ export default function HistorialPage() {
           {paymentMethods.length > 0 && (
             <div className="space-y-2">
               <Label>Métodos de pago</Label>
-              <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
                 {paymentMethods.map((method) => (
                   <label
                     key={method.id}
@@ -319,102 +301,84 @@ export default function HistorialPage() {
         </CardContent>
       </Card>
 
-      {/* KPI cards */}
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-xl" />
-          ))}
+        <div className="flex items-center gap-2 rounded-lg border bg-white p-4 text-slate-600">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Cargando BI...
         </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <KpiCard label="Ventas brutas" value={formatCurrency(summary?.totalSalesGross ?? 0)} />
-          <KpiCard label="Ventas netas" value={formatCurrency(summary?.totalSalesNet ?? 0)} />
-          <KpiCard label="Comisiones" value={formatCurrency(summary?.totalCommissions ?? 0)} />
-          <KpiCard label="Egresos" value={formatCurrency(summary?.totalExpenses ?? 0)} />
-          <KpiCard label="Ganancia neta" value={formatCurrency(summary?.netProfit ?? 0)} />
-          <KpiCard label="Transacciones" value={String(summary?.transactionCount ?? 0)} />
-        </div>
-      )}
+      ) : null}
+
+      {/* KPI cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <KpiCard label="Ventas brutas" value={formatCurrency(summary?.totalSalesGross ?? 0)} />
+        <KpiCard label="Ventas netas" value={formatCurrency(summary?.totalSalesNet ?? 0)} />
+        <KpiCard label="Comisiones" value={formatCurrency(summary?.totalCommissions ?? 0)} />
+      </div>
 
       {/* By payment method summary */}
-      {isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Resumen por método de pago</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+      <Card>
+        <CardHeader>
+          <CardTitle>Resumen por metodo</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Método</TableHead>
-                  <TableHead className="text-right">Bruto</TableHead>
-                  <TableHead className="text-right">Neto</TableHead>
-                  <TableHead className="text-right">Comisión</TableHead>
-                  <TableHead className="text-right"># Tx</TableHead>
-                  <TableHead className="text-right">Ticket prom.</TableHead>
+                  <TableHead>Metodo</TableHead>
+                  <TableHead>Bruto</TableHead>
+                  <TableHead>Neto</TableHead>
+                  <TableHead>Comision</TableHead>
+                  <TableHead># Transacciones</TableHead>
+                  <TableHead>Ticket Prom.</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {byPaymentMethod.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="h-16 text-center text-sm text-muted-foreground"
-                    >
+                    <TableCell colSpan={6} className="h-16 text-center text-sm text-slate-500">
                       Sin datos para el filtro actual.
                     </TableCell>
                   </TableRow>
                 ) : (
                   byPaymentMethod.map((row) => (
                     <TableRow key={row.paymentMethodId}>
-                      <TableCell className="font-medium">{row.paymentMethodName}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(row.salesGross)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(row.salesNet)}</TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(row.commissionsTotal)}
-                      </TableCell>
-                      <TableCell className="text-right">{row.transactionCount}</TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(row.averageTicket)}
-                      </TableCell>
+                      <TableCell>{row.paymentMethodName}</TableCell>
+                      <TableCell>{formatCurrency(row.salesGross)}</TableCell>
+                      <TableCell>{formatCurrency(row.salesNet)}</TableCell>
+                      <TableCell>{formatCurrency(row.commissionsTotal)}</TableCell>
+                      <TableCell>{row.transactionCount}</TableCell>
+                      <TableCell>{formatCurrency(row.averageTicket)}</TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Trends */}
-      {isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Tendencias</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+      <Card>
+        <CardHeader>
+          <CardTitle>Tendencias</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Fecha</TableHead>
-                  <TableHead className="text-right">Bruto</TableHead>
-                  <TableHead className="text-right">Neto</TableHead>
-                  <TableHead className="text-right">Comisión</TableHead>
-                  <TableHead className="text-right"># Tx</TableHead>
+                  <TableHead>Bruto</TableHead>
+                  <TableHead>Neto</TableHead>
+                  <TableHead>Comision</TableHead>
+                  <TableHead># Tx</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {trends.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="h-16 text-center text-sm text-muted-foreground"
-                    >
+                    <TableCell colSpan={5} className="h-16 text-center text-sm text-slate-500">
                       Sin tendencias para el filtro actual.
                     </TableCell>
                   </TableRow>
@@ -422,101 +386,86 @@ export default function HistorialPage() {
                   trends.map((row) => (
                     <TableRow key={row.date}>
                       <TableCell>{row.date}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(row.salesGross)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(row.salesNet)}</TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(row.commissionsTotal)}
-                      </TableCell>
-                      <TableCell className="text-right">{row.transactionCount}</TableCell>
+                      <TableCell>{formatCurrency(row.salesGross)}</TableCell>
+                      <TableCell>{formatCurrency(row.salesNet)}</TableCell>
+                      <TableCell>{formatCurrency(row.commissionsTotal)}</TableCell>
+                      <TableCell>{row.transactionCount}</TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Transaction detail with pagination */}
-      {isLoading ? (
-        <Skeleton className="h-60 w-full rounded-xl" />
-      ) : (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Detalle de pagos</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Anterior
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Pág. {pagination?.page ?? page} / {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={(pagination?.page ?? page) >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Siguiente
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <TransactionDetailTable rows={transactions} />
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Detalle de pagos</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </Button>
+            <span className="text-sm text-slate-500">
+              Pag {pagination?.page ?? page} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={(pagination?.page ?? page) >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <TransactionDetailTable rows={transactions} />
+        </CardContent>
+      </Card>
 
       {/* Commissions detail */}
-      {isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Detalle de comisiones por método</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+      <Card>
+        <CardHeader>
+          <CardTitle>Detalle de comisiones</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Método</TableHead>
-                  <TableHead className="text-right">Comisión %</TableHead>
-                  <TableHead className="text-right">Total comisiones</TableHead>
+                  <TableHead>Metodo</TableHead>
+                  <TableHead>Comision %</TableHead>
+                  <TableHead>Total comisiones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {commissionsByMethod.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={3}
-                      className="h-16 text-center text-sm text-muted-foreground"
-                    >
+                    <TableCell colSpan={3} className="h-16 text-center text-sm text-slate-500">
                       Sin comisiones para el filtro actual.
                     </TableCell>
                   </TableRow>
                 ) : (
                   commissionsByMethod.map((row) => (
                     <TableRow key={row.paymentMethodId}>
-                      <TableCell className="font-medium">{row.paymentMethodName}</TableCell>
-                      <TableCell className="text-right">
-                        {Number(row.commissionPercentage ?? 0).toFixed(2)}%
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(row.commissionsTotal)}
-                      </TableCell>
+                      <TableCell>{row.paymentMethodName}</TableCell>
+                      <TableCell>{Number(row.commissionPercentage ?? 0).toFixed(2)}%</TableCell>
+                      <TableCell>{formatCurrency(row.commissionsTotal)}</TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
