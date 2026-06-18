@@ -70,18 +70,41 @@ Convención de rutas: todas con prefijo global `/api` (excepto `/health`).
 
 - `GET /settings`, `PATCH /settings` (nombre de la tienda).
 
-## Offline / PIN / sync (`apps/web/src/lib`, `hooks/use-sync.ts`)
+## Offline-first (objetivo: vender + imprimir sin internet, target = desktop)
 
-- Cola en IndexedDB (Dexie): `queuedSales`, `queuedExpenses`, `offlineSession`.
-- **PIN offline**: si no hay internet y la sesión expiró, `ProtectedRoute` muestra
-  `OfflinePinScreen` (PIN hasheado con bcryptjs en IndexedDB). En modo offline el
-  nav se restringe a Ventas + Egresos.
-- **Sync**: al reconectar (`useConnectivity.onReconnect`), `useSync.syncNow()`
-  envía la cola a `/sales/sync` y `/cash/expenses/sync`. Los endpoints devuelven
-  `{ success, skipped, failed[], message }`; los items que no fallan se marcan
-  sincronizados e invalida las queries financieras.
-- `useConnectivity` expone `isOnline` + `hasCheckedHealth` (para no decidir
-  login-vs-PIN antes del primer health check real).
+El target real de offline es la **app de escritorio (Electron)**; en web el primer
+load siempre necesita internet. La arquitectura tiene 4 piezas:
+
+1. **Desktop fat client** (`apps/desktop/electron/main.ts`). El Electron **NO carga
+   la web remota** (sin internet fallaba): empaqueta la web y la sirve local vía un
+   protocolo `app://` con fallback a `index.html` (mantiene BrowserRouter). Así la
+   app **siempre abre**. Solo el **API URL** se configura por tenant en runtime
+   (`config.json` → `apiUrl`; el setup pide la URL del API; el preload expone
+   `electronAPI.apiUrl` vía `sendSync('get-api-url')`). El build copia
+   `apps/web/dist` → `dist-electron/web` (`scripts/copy-web.mjs`) antes de
+   electron-builder. En la web, `lib/api.ts` resuelve la base de
+   `electronAPI.apiUrl || VITE_API_URL` (el deploy web no se afecta).
+2. **Catálogo persistido** (`lib/query-persister.ts`, `main.tsx`). TanStack Query
+   persistence (localStorage) **solo** de las keys del catálogo
+   (`products`, `categories`, `payment-methods`, `settings`) — no auth/ventas/BI.
+   `gcTime` 7d. Así los productos cargan offline desde un arranque en frío.
+3. **PIN global de acceso offline** (`lib/offline-pin.ts`, Configuración). El admin
+   configura **un PIN de 4-6 dígitos** desde Configuración (`OfflinePinCard`,
+   admin-only) → `saveGlobalOfflinePin` guarda una sesión genérica de **cajero**
+   en IndexedDB. Sin internet, el `login` muestra "Ingresar sin conexión" → PIN →
+   `OfflinePinScreen` → modo offline (rol cajero, nav restringido a Ventas+Egresos).
+   `ProtectedRoute` también muestra el PIN al entrar offline a una ruta protegida.
+4. **Cola + sync** (`hooks/use-sync.ts`). Ventas/egresos se encolan en IndexedDB
+   (Dexie: `queuedSales`, `queuedExpenses`). Al reconectar
+   (`useConnectivity.onReconnect`), `syncNow()` los envía a `/sales/sync` y
+   `/cash/expenses/sync` (devuelven `{ success, skipped, failed[], message }`),
+   marca sincronizados los que no fallan, e invalida las queries financieras. El
+   flujo es: vuelve internet → re-login → sync; las ventas offline se atribuyen al
+   cajero que se re-loguea (por eso no hace falta cambio de atribución en backend).
+
+`useConnectivity` expone `isOnline` + `hasCheckedHealth` (para no decidir
+login-vs-PIN antes del primer health check real). Imprimir offline funciona vía
+Electron (local), no necesita internet.
 
 ## Shell / UI (`apps/web/src/layouts/app-layout.tsx`)
 
