@@ -23,38 +23,39 @@ Todas las decisiones D1–D25 están resueltas. No requiere código.
 
 ### Tareas
 
-- [ ] **T1.1** TEST: crear `packages/carbopuntos-contracts/src/__tests__/customer.spec.ts` con
+- [x] **T1.1** TEST: crear `packages/carbopuntos-contracts/src/__tests__/customer.spec.ts` con
       casos vitest para `customerSchema` (dni 8 dígitos, teléfono opcional), `affiliateCustomerSchema`
       (consentimiento requerido), `customerSearchSchema`.
-- [ ] **T1.2** IMPL: crear `packages/carbopuntos-contracts/package.json` (`@app/carbopuntos-contracts`,
+- [x] **T1.2** IMPL: crear `packages/carbopuntos-contracts/package.json` (`@app/carbopuntos-contracts`,
       deps: `zod`, devDeps: `tsup`, `typescript`).
-- [ ] **T1.3** IMPL: crear `tsup.config.ts` y `tsconfig.json` siguiendo el patrón de `packages/contracts`.
-- [ ] **T1.4** IMPL: crear `src/customer.ts` con `customerSchema`, `affiliateCustomerSchema`,
+- [x] **T1.3** IMPL: crear `tsup.config.ts` y `tsconfig.json` siguiendo el patrón de `packages/contracts`.
+- [x] **T1.4** IMPL: crear `src/customer.ts` con `customerSchema`, `affiliateCustomerSchema`,
       `customerSearchSchema`. `phone` opcional. `consent_at` requerido.
-- [ ] **T1.5** TEST: `src/__tests__/dni.spec.ts` — validar la respuesta de json.pe (success/error).
-- [ ] **T1.6** IMPL: crear `src/dni.ts` con `dniLookupResponseSchema` (mapea `nombres`,
+- [x] **T1.5** TEST: `src/__tests__/dni.spec.ts` — validar la respuesta de json.pe (success/error).
+- [x] **T1.6** IMPL: crear `src/dni.ts` con `dniLookupResponseSchema` (mapea `nombres`,
       `apellido_paterno`, `apellido_materno`, `nombre_completo`).
-- [ ] **T1.7** TEST: `src/__tests__/movement.spec.ts` — tipos de movimiento, campos opcionales,
+- [x] **T1.7** TEST: `src/__tests__/movement.spec.ts` — tipos de movimiento, campos opcionales,
       `idempotency_key` único, `is_voided`.
-- [ ] **T1.8** IMPL: crear `src/movement.ts` con `pointsMovementSchema`
+- [x] **T1.8** IMPL: crear `src/movement.ts` con `pointsMovementSchema`
       (type enum: `accrual|redeem|adjustment|reversal`; `points: z.coerce.number()`).
-- [ ] **T1.9** TEST: `src/__tests__/balance.spec.ts` — saldo nunca negativo en schema,
+- [x] **T1.9** TEST: `src/__tests__/balance.spec.ts` — saldo nunca negativo en schema,
       saldo proyectado.
-- [ ] **T1.10** IMPL: crear `src/balance.ts` con `balanceSchema` y `projectedBalanceSchema`.
-- [ ] **T1.11** TEST: `src/__tests__/operations.spec.ts` — cada operación: accrue, redeem,
+- [x] **T1.10** IMPL: crear `src/balance.ts` con `balanceSchema` y `projectedBalanceSchema`.
+- [x] **T1.11** TEST: `src/__tests__/operations.spec.ts` — cada operación: accrue, redeem,
       mixedOperation, reverse, adjust, voidMovement. Validar que `idempotencyKey` es requerido
       en accrue/redeem/mixedOperation/reverse.
-- [ ] **T1.12** IMPL: crear `src/operations.ts` con `accrueSchema`, `redeemSchema`,
+- [x] **T1.12** IMPL: crear `src/operations.ts` con `accrueSchema`, `redeemSchema`,
       `mixedOperationSchema`, `reverseSchema`, `adjustSchema`, `voidMovementSchema`.
-- [ ] **T1.13** TEST: `src/__tests__/reward.spec.ts` — reward local (nombre, costoPuntos, activo).
-- [ ] **T1.14** IMPL: crear `src/reward.ts` con `rewardSchema`.
-- [ ] **T1.15** IMPL: crear `src/index.ts` (barrel — re-exporta todo).
-- [ ] **T1.16** IMPL: actualizar `pnpm-workspace.yaml` si es necesario para incluir
+- [x] **T1.13** TEST: `src/__tests__/reward.spec.ts` — reward local (nombre, costoPuntos, activo).
+- [x] **T1.14** IMPL: crear `src/reward.ts` con `rewardSchema`.
+- [x] **T1.15** IMPL: crear `src/index.ts` (barrel — re-exporta todo).
+- [x] **T1.16** IMPL: actualizar `pnpm-workspace.yaml` si es necesario para incluir
       `packages/carbopuntos-contracts` y `packages/carbopuntos-client`.
-- [ ] **T1.17** IMPL: actualizar `.github/workflows/ci.yml` — agregar paso
+      (pnpm-workspace.yaml ya cubría `packages/*` — no se requirió cambio)
+- [x] **T1.17** IMPL: actualizar `.github/workflows/ci.yml` — agregar paso
       `pnpm --filter @app/carbopuntos-contracts build` entre el build de `@app/contracts` y el
       paso de lint/typecheck.
-- [ ] **T1.18** VERIFY: `pnpm --filter @app/carbopuntos-contracts build` compila sin errores.
+- [x] **T1.18** VERIFY: `pnpm --filter @app/carbopuntos-contracts build` compila sin errores.
       `pnpm --filter @app/carbopuntos-contracts test` pasa. Suite completa verde tras rebase sobre main.
 
 **Hecho cuando:** el paquete compila, los tests pasan, y el CI actualizado construye el paquete
