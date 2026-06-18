@@ -117,13 +117,34 @@ export class CashService {
     return this.expenseRepo.save(expense);
   }
 
-  async syncExpenses(input: SyncExpensesDto, createdBy: User): Promise<{ created: number }> {
-    let created = 0;
+  async syncExpenses(
+    input: SyncExpensesDto,
+    createdBy: User,
+  ): Promise<{
+    success: number;
+    skipped: number;
+    failed: { receiptNumber?: string; error: string }[];
+    message: string;
+  }> {
+    let success = 0;
+    const failed: { receiptNumber?: string; error: string }[] = [];
     for (const dto of input.expenses) {
-      await this.createExpense(dto, createdBy);
-      created++;
+      try {
+        await this.createExpense(dto, createdBy);
+        success++;
+      } catch (e) {
+        failed.push({
+          receiptNumber: dto.receiptNumber,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     }
-    return { created };
+    return {
+      success,
+      skipped: 0,
+      failed,
+      message: `${success} creados, ${failed.length} con error`,
+    };
   }
 
   async findAll(filter: DateRangeFilter): Promise<Expense[]> {
