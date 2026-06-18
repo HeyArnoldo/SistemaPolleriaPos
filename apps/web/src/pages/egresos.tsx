@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,14 +11,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Trash2, Plus, AlertCircle } from 'lucide-react';
+import { Loader2, Trash2, AlertCircle } from 'lucide-react';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useGetExpenses, useCreateExpense, useDeleteExpense } from '@/hooks/use-cash';
 import { useGetPaymentMethods } from '@/hooks/use-payment-methods';
 import { useConnectivity } from '@/hooks/use-connectivity';
-import { formatCurrency, formatDateTime } from '@/lib/formatting';
+import { formatCurrency, formatTime } from '@/lib/formatting';
 import {
   groupExpensesByDate,
   formatDateLabel,
@@ -28,14 +42,6 @@ import {
 } from '@/lib/caja';
 import { getErrorMessage } from '@/lib/errors';
 import { enqueueExpense } from '@/lib/queue-manager';
-import type { Expense } from '@/types/models';
-
-interface ExpenseFormValues {
-  description: string;
-  amount: string;
-  paymentMethodId: string;
-  receiptNumber?: string;
-}
 
 export default function EgresosPage() {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
@@ -47,58 +53,74 @@ export default function EgresosPage() {
     isLoading,
     isError,
   } = useGetExpenses(showAll ? undefined : { startDate: dateFilter, endDate: dateFilter });
-  const { data: paymentMethods = [] } = useGetPaymentMethods();
+  const { data: paymentMethods = [], isLoading: isLoadingPaymentMethods } = useGetPaymentMethods();
   const { mutate: createExpense, isPending: isCreating } = useCreateExpense();
   const { mutate: deleteExpense, isPending: isDeleting } = useDeleteExpense();
   const { isOnline } = useConnectivity();
 
-  const [showForm, setShowForm] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [receiptNumber, setReceiptNumber] = useState('');
+  const [paymentMethodId, setPaymentMethodId] = useState('');
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    reset,
-    formState: { errors },
-  } = useForm<ExpenseFormValues>();
+  const totalExpenses = useMemo(
+    () => expenses.reduce((acc, item) => acc + Number(item.amount ?? 0), 0),
+    [expenses],
+  );
 
-  const paymentMethodId = watch('paymentMethodId');
+  const grouped = useMemo(() => groupExpensesByDate(expenses), [expenses]);
 
-  const onSubmit = async (values: ExpenseFormValues) => {
-    if (!values.paymentMethodId) {
-      toast.error('Selecciona un método de pago');
+  const isMethodsUnavailable = paymentMethods.length === 0;
+  const selectedPaymentMethodId =
+    paymentMethodId || (paymentMethods[0] ? String(paymentMethods[0].id) : '');
+
+  const resetForm = () => {
+    setDescription('');
+    setAmount('');
+    setReceiptNumber('');
+    setPaymentMethodId('');
+  };
+
+  const handleCreate = async () => {
+    const parsedAmount = Number(amount);
+    if (!description.trim()) {
+      toast.error('La descripcion es obligatoria.');
       return;
     }
-    const parsedAmount = parseFloat(values.amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      toast.error('El monto debe ser mayor a 0');
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast.error('Ingresa un monto valido.');
       return;
     }
+    if (!selectedPaymentMethodId) {
+      toast.error('Selecciona un metodo de pago.');
+      return;
+    }
+
     const payload = {
-      description: values.description.trim(),
-      amount: parseFloat(values.amount),
-      paymentMethodId: parseInt(values.paymentMethodId),
-      ...(values.receiptNumber?.trim() ? { receiptNumber: values.receiptNumber.trim() } : {}),
+      description: description.trim(),
+      amount: Number(parsedAmount.toFixed(2)),
+      paymentMethodId: Number(selectedPaymentMethodId),
+      ...(receiptNumber.trim() ? { receiptNumber: receiptNumber.trim() } : {}),
     };
 
     if (!isOnline) {
       await enqueueExpense(crypto.randomUUID(), payload);
-      toast.success('Egreso guardado sin conexión — se enviará al reconectarse');
-      reset();
-      setShowForm(false);
+      toast.success('Egreso guardado sin conexion — se enviara al reconectarse.');
+      resetForm();
+      setDialogOpen(false);
       return;
     }
 
     createExpense(payload, {
       onSuccess: () => {
-        toast.success('Egreso registrado');
-        reset();
-        setShowForm(false);
+        toast.success('Egreso registrado.');
+        resetForm();
+        setDialogOpen(false);
       },
       onError: (err) => {
-        toast.error(getErrorMessage(err, 'Error al registrar el egreso'));
+        toast.error(getErrorMessage(err, 'No se pudo registrar el egreso.'));
       },
     });
   };
@@ -116,18 +138,102 @@ export default function EgresosPage() {
     });
   };
 
-  const grouped = groupExpensesByDate(expenses);
-
   return (
-    <div className="p-4 space-y-4 max-w-2xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Egresos</h1>
-        <Button onClick={() => setShowForm((v) => !v)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo egreso
-        </Button>
-      </div>
+    <div className="space-y-6">
+      {/* Red total card */}
+      <Card className="border-red-100 bg-red-50">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-sm text-red-700">Total Egresos</CardTitle>
+            <div className="text-3xl font-bold text-red-700">{formatCurrency(totalExpenses)}</div>
+          </div>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>Nuevo Egreso</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Registrar egreso</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label>Descripcion</Label>
+                  <Input
+                    placeholder="Ej: Pago de luz"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label>Monto</Label>
+                    <Input
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Metodo de pago</Label>
+                    <Select
+                      value={selectedPaymentMethodId}
+                      onValueChange={setPaymentMethodId}
+                      disabled={isLoadingPaymentMethods || isMethodsUnavailable}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paymentMethods.map((m) => (
+                          <SelectItem key={m.id} value={String(m.id)}>
+                            {m.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Comprobante (opcional)</Label>
+                  <Input
+                    placeholder="FAC-123"
+                    value={receiptNumber}
+                    onChange={(e) => setReceiptNumber(e.target.value)}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    resetForm();
+                    setDialogOpen(false);
+                  }}
+                  disabled={isCreating}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleCreate}
+                  disabled={isCreating || isLoadingPaymentMethods || isMethodsUnavailable}
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    'Guardar'
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+      </Card>
 
+      {/* Date filter */}
       <div className="flex items-center gap-2">
         <Input
           type="date"
@@ -144,10 +250,11 @@ export default function EgresosPage() {
           size="sm"
           onClick={() => setShowAll((v) => !v)}
         >
-          {showAll ? 'Filtrar por día' : 'Ver todo'}
+          {showAll ? 'Filtrar por dia' : 'Ver todo'}
         </Button>
       </div>
 
+      {/* Error state */}
       {isError && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -155,119 +262,87 @@ export default function EgresosPage() {
         </Alert>
       )}
 
-      {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Registrar egreso</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-1">
-                <Label htmlFor="description">Descripcion</Label>
-                <Input
-                  id="description"
-                  {...register('description', { required: 'La descripcion es requerida' })}
-                  placeholder="Descripcion del egreso..."
-                />
-                {errors.description && (
-                  <p className="text-xs text-destructive">{errors.description.message}</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="amount">Monto</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    {...register('amount', {
-                      required: 'El monto es requerido',
-                      min: { value: 0.01, message: 'El monto debe ser mayor a 0' },
-                    })}
-                    placeholder="0.00"
-                  />
-                  {errors.amount && (
-                    <p className="text-xs text-destructive">{errors.amount.message}</p>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <Label>Metodo de pago</Label>
-                  <Select
-                    value={paymentMethodId}
-                    onValueChange={(v) => setValue('paymentMethodId', v, { shouldValidate: true })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {paymentMethods.map((m) => (
-                        <SelectItem key={m.id} value={String(m.id)}>
-                          {m.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="receiptNumber">N. Comprobante (opcional)</Label>
-                <Input id="receiptNumber" {...register('receiptNumber')} placeholder="0001" />
-              </div>
-
-              <div className="flex gap-2">
-                <Button type="submit" disabled={isCreating}>
-                  {isCreating ? 'Guardando...' : 'Registrar'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    reset();
-                    setShowForm(false);
-                  }}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      {isLoading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
-        </div>
-      ) : Object.keys(grouped).length === 0 ? (
-        <p className="text-center text-muted-foreground py-8 text-sm">No hay egresos registrados</p>
-      ) : (
-        <div className="space-y-6">
-          {Object.entries(grouped).map(([dateStr, dayExpenses]) => (
-            <div key={dateStr}>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold">{formatDateLabel(dateStr)}</h3>
-                <span className="text-sm font-bold text-destructive">
-                  -{formatCurrency(getDayExpensesTotal(dayExpenses))}
-                </span>
-              </div>
-              <div className="space-y-2">
-                {dayExpenses.map((expense) => (
-                  <ExpenseItem
-                    key={expense.id}
-                    expense={expense}
-                    onDelete={() => setDeleteId(expense.id)}
-                  />
-                ))}
-              </div>
+      {/* Expenses list */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Egresos Registrados</CardTitle>
+            <p className="text-sm text-muted-foreground">{expenses.length} registros</p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Cargando egresos...
             </div>
-          ))}
-        </div>
-      )}
+          ) : Object.keys(grouped).length === 0 ? (
+            <div className="rounded-md border">
+              <Table>
+                <TableBody>
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      No hay egresos registrados.
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(grouped).map(([dateStr, dayExpenses]) => (
+                <div key={dateStr} className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <h3 className="text-sm font-semibold text-slate-700">
+                      {formatDateLabel(dateStr)}
+                    </h3>
+                    <span className="text-sm font-medium text-red-600">
+                      Total: {formatCurrency(getDayExpensesTotal(dayExpenses))}
+                    </span>
+                  </div>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Descripcion</TableHead>
+                          <TableHead>Monto</TableHead>
+                          <TableHead>Comprobante</TableHead>
+                          <TableHead>Metodo</TableHead>
+                          <TableHead>Hora</TableHead>
+                          <TableHead className="w-10" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {dayExpenses.map((expense) => (
+                          <TableRow key={expense.id}>
+                            <TableCell>{expense.description}</TableCell>
+                            <TableCell className="font-semibold text-red-600">
+                              {formatCurrency(Number(expense.amount ?? 0))}
+                            </TableCell>
+                            <TableCell>{expense.receiptNumber ?? '-'}</TableCell>
+                            <TableCell>{getExpensePaymentName(expense)}</TableCell>
+                            <TableCell>{formatTime(expense.createdAt)}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => setDeleteId(expense.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <DeleteConfirmDialog
         open={!!deleteId}
@@ -278,40 +353,6 @@ export default function EgresosPage() {
         onConfirm={handleDelete}
         isLoading={isDeleting}
       />
-    </div>
-  );
-}
-
-interface ExpenseItemProps {
-  expense: Expense;
-  onDelete: () => void;
-}
-
-function ExpenseItem({ expense, onDelete }: ExpenseItemProps) {
-  return (
-    <div className="border rounded-md p-3 flex items-start gap-3">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">{expense.description}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {getExpensePaymentName(expense)}
-          {expense.receiptNumber && ` · Comp. ${expense.receiptNumber}`}
-          {' · '}
-          {formatDateTime(expense.createdAt)}
-        </p>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-sm font-bold text-destructive">
-          -{formatCurrency(expense.amount)}
-        </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-          onClick={onDelete}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
     </div>
   );
 }
