@@ -133,11 +133,11 @@ describe('buildRedemptionsPayload', () => {
     expect(buildRedemptionsPayload([])).toEqual([]);
   });
 
-  it('maps each reward to rewardId + points', () => {
+  it('maps each reward to the contract shape (description + costPoints)', () => {
     const rewards = [makeReward('abc-123', 100), makeReward('def-456', 200)];
     expect(buildRedemptionsPayload(rewards)).toEqual([
-      { rewardId: 'abc-123', points: 100 },
-      { rewardId: 'def-456', points: 200 },
+      { description: 'Reward abc-123', costPoints: 100 },
+      { description: 'Reward def-456', costPoints: 200 },
     ]);
   });
 });

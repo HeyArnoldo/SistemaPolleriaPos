@@ -53,14 +53,16 @@ export function calcProjectedBalance(
 
 /**
  * Build the sale payload's redemptions array from pending reward selections.
- * Each reward maps to one redemption entry (rewardId + costPoints).
+ * Each reward maps to one redemption entry shaped per the contract
+ * (redemptionItemSchema): { description, costPoints }. The reward lives locally
+ * (D2); only the hub debit (costPoints) and its detail (description) are sent.
  */
 export function buildRedemptionsPayload(
   pendingRewards: Reward[],
-): Array<{ rewardId: string; points: number }> {
+): Array<{ description: string; costPoints: number }> {
   return pendingRewards.map((r) => ({
-    rewardId: r.id,
-    points: r.costPoints,
+    description: r.name,
+    costPoints: r.costPoints,
   }));
 }
 

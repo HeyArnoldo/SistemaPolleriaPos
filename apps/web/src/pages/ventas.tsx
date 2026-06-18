@@ -27,7 +27,7 @@ import { buildTicketHtml } from '@/lib/ticket';
 import { getPrintSettings } from '@/lib/print-settings';
 import { printTicket } from '@/lib/printing';
 import { calcPointsToEarn, calcRedemptionCost, buildRedemptionsPayload } from '@/hooks/use-points';
-import type { Sale } from '@/types/models';
+import type { Sale, CreateSaleDTO } from '@/types/models';
 import type { Customer, Reward } from '@app/carbopuntos-contracts';
 
 export default function VentasPage() {
@@ -142,7 +142,10 @@ export default function VentasPage() {
     const redemptions =
       pendingRewards.length > 0 ? buildRedemptionsPayload(pendingRewards) : undefined;
 
-    const salePayload = {
+    // Typed against the Zod contract (CreateSaleDTO) so any shape drift versus
+    // server validation is a COMPILE ERROR (customerDni camelCase, redemption
+    // shape, etc.).
+    const salePayload: CreateSaleDTO = {
       saleNumber: generateSaleNumber(),
       items: items.map((i) => ({
         productId: i.product.id,
@@ -151,7 +154,7 @@ export default function VentasPage() {
       })),
       payments: payments ?? [],
       ...(notesInput.trim() ? { notes: notesInput.trim() } : {}),
-      ...(linkedCustomer ? { customer_dni: linkedCustomer.dni } : {}),
+      ...(linkedCustomer ? { customerDni: linkedCustomer.dni } : {}),
       ...(redemptions ? { redemptions } : {}),
     };
 
@@ -176,7 +179,16 @@ export default function VentasPage() {
             `Venta registrada${pointsToEarn > 0 && linkedCustomer ? ` · +${pointsToEarn} pts` : ''}`,
           );
         }
-        handlePrintSale(sale);
+        // The API does not echo the customer name; the web already knows it from
+        // the linked customer, so inject it into the ticket's carbopuntos block.
+        const saleForTicket: Sale =
+          linkedCustomer && sale.carbopuntos
+            ? {
+                ...sale,
+                carbopuntos: { ...sale.carbopuntos, customerName: linkedCustomer.fullName },
+              }
+            : sale;
+        handlePrintSale(saleForTicket);
         clearCart();
         resetPayment();
         setNotesInput('');

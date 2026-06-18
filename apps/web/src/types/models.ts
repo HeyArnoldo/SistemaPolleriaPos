@@ -1,4 +1,4 @@
-import type { UserRole } from '@app/contracts';
+import type { UserRole, CreateSaleInput, RedemptionItemInput } from '@app/contracts';
 
 export interface ProductCategory {
   id: number;
@@ -43,22 +43,23 @@ export interface CreatePaymentDTO {
   transferTime?: string;
 }
 
-export interface SaleRedemption {
-  rewardId: string;
-  points: number;
-}
+/**
+ * A redemption entry as recorded in a sale. Shape is the contract source of
+ * truth (redemptionItemSchema): { description, costPoints }. Sending the wrong
+ * shape is now a compile error (see CreateSaleDTO).
+ */
+export type SaleRedemption = RedemptionItemInput;
 
-export interface CreateSaleDTO {
-  items: CreateSaleItemDTO[];
-  payments: CreatePaymentDTO[];
-  notes?: string;
-  saleNumber?: string;
+/**
+ * Sale creation payload. Derived from the Zod contract (createSaleSchema) so the
+ * web payload can NEVER drift from server validation — a mismatched shape is a
+ * COMPILE ERROR. Notably this enforces `customerDni` (camelCase) and the
+ * `{ description, costPoints }` redemption shape. `createdAt` is widened to also
+ * accept an ISO string (the contract coerces it server-side).
+ */
+export type CreateSaleDTO = Omit<CreateSaleInput, 'createdAt'> & {
   createdAt?: string;
-  /** DNI of the customer being served (optional — no customer = no points). */
-  customer_dni?: string;
-  /** Rewards being redeemed in this sale (optional). */
-  redemptions?: SaleRedemption[];
-}
+};
 
 export interface CancelSaleDTO {
   reason: string;
