@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as cashApi from '@/services/cash.api';
-import { QUERY_KEYS } from './query-keys';
+import { QUERY_KEYS, invalidateFinancialQueries } from './query-keys';
 import type { CreateExpenseDTO } from '@/types/models';
 
 export const useGetCashDashboard = (date?: string) =>
@@ -20,10 +20,7 @@ export const useCreateExpense = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateExpenseDTO) => cashApi.createExpense(payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['expenses'] });
-      qc.invalidateQueries({ queryKey: ['cash-dashboard'] });
-    },
+    onSuccess: () => invalidateFinancialQueries(qc),
   });
 };
 
@@ -31,9 +28,6 @@ export const useDeleteExpense = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => cashApi.deleteExpense(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['expenses'] });
-      qc.invalidateQueries({ queryKey: ['cash-dashboard'] });
-    },
+    onSuccess: () => invalidateFinancialQueries(qc),
   });
 };
