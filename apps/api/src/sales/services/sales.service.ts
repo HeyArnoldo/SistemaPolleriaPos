@@ -234,6 +234,15 @@ export class SalesService {
       puntajeMap.set(product.id, product.puntaje ?? 0);
     }
 
+    // A redeem-only canje has no accrual side (empty cart or all puntaje=0). The
+    // hub `reverse` validates a prior accrual (C15), so it CANNOT restore a
+    // redeem-only debit — we flag this for honest compensation reporting.
+    const totalAccrual = dto.items.reduce(
+      (sum, item) => sum + (puntajeMap.get(item.productId) ?? 0) * item.quantity,
+      0,
+    );
+    const isRedeemOnly = totalAccrual <= 0;
+
     // Step 1: hub debit. Throws on any failure (D1) — nothing persisted yet.
     await this.tryOperation(saleNumber, dto.items, customerDni, user, puntajeMap, dto.redemptions!);
 
@@ -244,7 +253,7 @@ export class SalesService {
       // The debit already happened in the hub but the local write failed. Issue a
       // best-effort compensating reverse (idempotent by the sale's STORE_ID key)
       // so the customer's points are returned, then re-throw the original error.
-      await this.compensateReverse(saleNumber, customerDni, user, persistErr);
+      await this.compensateReverse(saleNumber, customerDni, user, persistErr, isRedeemOnly);
       throw persistErr;
     }
   }
@@ -253,12 +262,19 @@ export class SalesService {
    * Best-effort compensation when a local persist fails after a successful hub
    * debit. Idempotent by the sale's STORE_ID-prefixed key, so a later retry of
    * the whole sale does not double-debit. Never throws — logs on failure.
+   *
+   * LIMITACIÓN (C15): el `reverse` del hub valida una acumulación previa, así
+   * que para un canje SOLO-redeem (sin acumulación) es un no-op — NO devuelve los
+   * puntos debitados. En ese caso dejamos el reverse best-effort igual, pero
+   * logueamos un error explícito de revisión manual para que no quede silencioso.
+   * (Seguimiento futuro fuera de WU-6a: que `/points/reverse` revierta canjes.)
    */
   private async compensateReverse(
     saleNumber: string,
     customerDni: string,
     user: User,
     cause: unknown,
+    isRedeemOnly: boolean,
   ): Promise<void> {
     if (!this.carbopuntosClient) return;
     const idempotencyKey = this.buildIdempotencyKey(saleNumber, 'reversal');
@@ -272,6 +288,14 @@ export class SalesService {
         userRef: String(user.id),
         idempotencyKey,
       });
+      if (isRedeemOnly) {
+        // El reverse probablemente fue un no-op en el hub (C15): el canje quedó
+        // debitado sin venta persistida. No podemos garantizar la devolución.
+        this.logger.error(
+          `Requiere revisión manual: canje debitado sin venta persistida para la venta ${saleNumber} ` +
+            `(customerDni=${customerDni}). El reverse del hub no revierte canjes solo-redeem (C15).`,
+        );
+      }
     } catch (reverseErr: unknown) {
       this.logger.error(
         `Compensating reverse FAILED for sale ${saleNumber}: ${String(reverseErr)}. Manual reconciliation required.`,

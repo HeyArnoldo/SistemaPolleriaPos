@@ -19,7 +19,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { SalesService } from './services/sales.service';
 import { Sale } from './entities/sale.entity';
 import { PaymentMethod } from './entities/payment-method.entity';
@@ -661,6 +661,71 @@ describe('SalesService.createSale — redemptions (carbopuntos)', () => {
           saleRef: 'SALE-014',
         }),
       );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Test 13: solo-canje (redeem-only) persist fails after debit → manual-review log
+  // -----------------------------------------------------------------------
+
+  describe('T13 — solo-canje persist fails after debit → manual-review error logged', () => {
+    it('logs a manual-review error because the hub reverse cannot restore a redeem-only debit (C15)', async () => {
+      // Solo-canje: empty items, redemptions only. The hub debit (redeem) succeeds,
+      // then the local persist blows up. The hub `reverse` validates a prior accrual
+      // (C15), so it is a no-op for a redeem-only debit — points stay debited.
+      const savedSale = makeSale(64, 'SALE-015', '12345678');
+      savedSale.totalAmount = 0;
+      savedSale.subtotal = 0;
+
+      mockClient = {
+        accrue: jest.fn(),
+        redeem: jest.fn().mockResolvedValue({ id: 'mov-redeem' }),
+        operation: jest.fn(),
+        reverse: jest.fn().mockResolvedValue({ id: 'mov-reverse' }),
+      };
+      mockPendingService = { enqueue: jest.fn() };
+
+      mockSaleRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        manager: makeRepoManager(savedSale, null, null),
+      };
+      // The hub debit succeeded, but the local DB write blows up afterwards.
+      mockSaleRepo.manager.transaction.mockRejectedValue(new Error('DB connection lost'));
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          SalesService,
+          { provide: getRepositoryToken(Sale), useValue: mockSaleRepo },
+          { provide: CARBOPUNTOS_CLIENT_TOKEN, useValue: mockClient },
+          { provide: CARBOPUNTOS_PENDING_TOKEN, useValue: mockPendingService },
+          { provide: ConfigService, useValue: { get: jest.fn(() => 'SEDE-01') } },
+        ],
+      }).compile();
+
+      service = module.get<SalesService>(SalesService);
+
+      const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+      await expect(
+        service.createSale(
+          {
+            saleNumber: 'SALE-015',
+            customerDni: '12345678',
+            items: [], // solo canje
+            payments: [],
+            redemptions: [{ description: 'Bebida gratis', costPoints: 20 }],
+          },
+          makeUser(),
+        ),
+      ).rejects.toThrow('DB connection lost');
+
+      // A manual-reconciliation error must be logged for the redeem-only case.
+      const loggedManualReview = errorSpy.mock.calls.some((call) =>
+        /revisi[oó]n manual/i.test(String(call[0])),
+      );
+      expect(loggedManualReview).toBe(true);
+
+      errorSpy.mockRestore();
     });
   });
 });
