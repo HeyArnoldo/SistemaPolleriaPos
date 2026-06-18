@@ -280,12 +280,14 @@ export interface BICommissionsResponse {
 declare global {
   interface Window {
     electronAPI?: {
+      /** API base URL configured for this device (Electron fat client). */
+      apiUrl?: string;
       printTicket: (
         html: string,
         options?: { printerName?: string; marginsType?: number },
       ) => Promise<void>;
       getPrinters?: () => Promise<{ name: string; displayName?: string }[]>;
-      saveConfig: (url: string) => Promise<void>;
+      saveConfig: (apiUrl: string) => Promise<void>;
     };
   }
 }

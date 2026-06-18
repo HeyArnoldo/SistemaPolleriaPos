@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '@/lib/api';
+import { api, apiBaseUrl } from '@/lib/api';
 
 const POLL_INTERVAL_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -27,7 +27,7 @@ export function useConnectivity({ onReconnect }: UseConnectivityOptions = {}) {
       // así que sobreescribimos baseURL para no pegarle a /api/health (404).
       await api.get('/health', {
         timeout: REQUEST_TIMEOUT_MS,
-        baseURL: import.meta.env.VITE_API_URL ?? '',
+        baseURL: apiBaseUrl,
       });
       if (wasOfflineRef.current) {
         wasOfflineRef.current = false;

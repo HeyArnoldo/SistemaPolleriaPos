@@ -1,12 +1,23 @@
 import axios from 'axios';
 
 /**
+ * URL base del API. En la app de escritorio (Electron) la web va empaquetada y
+ * se configura en runtime cuál es el API del tenant (window.electronAPI.apiUrl).
+ * En la web normal se hornea en build (VITE_API_URL); en dev va vacía y el
+ * proxy de Vite reenvía /api a la API.
+ */
+export const apiBaseUrl = (
+  window.electronAPI?.apiUrl ||
+  import.meta.env.VITE_API_URL ||
+  ''
+).replace(/\/+$/, '');
+
+/**
  * Cliente HTTP centralizado. withCredentials: true → manda/recibe la cookie
- * httpOnly de sesión. En dev VITE_API_URL va vacía: pega a /api (mismo origen)
- * y el proxy de Vite lo reenvía a la API. En producción: URL absoluta.
+ * httpOnly de sesión.
  */
 export const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL ?? ''}/api`,
+  baseURL: `${apiBaseUrl}/api`,
   withCredentials: true,
 });
 

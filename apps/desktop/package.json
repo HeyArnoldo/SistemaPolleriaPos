@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "concurrently \"vite build --watch\" \"electron .\"",
     "build": "vite build",
-    "dist": "vite build && electron-builder",
-    "dist:win": "vite build && electron-builder --win"
+    "dist": "pnpm --filter @app/web build && vite build && node scripts/copy-web.mjs && electron-builder",
+    "dist:win": "pnpm --filter @app/web build && vite build && node scripts/copy-web.mjs && electron-builder --win"
   },
   "dependencies": {
     "electron": "^36.0.0",

@@ -1,10 +1,14 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session, protocol, net } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { join } from 'path';
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { pathToFileURL } from 'url';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'fs';
 
+// ── Tenant config ───────────────────────────────────────────────────────────
+// Fat client: the web is bundled inside the app and loaded locally, so the app
+// opens with or without internet. Only the API URL is configured per tenant.
 interface TenantConfig {
-  webUrl: string;
+  apiUrl: string;
 }
 
 const CONFIG_FILE = join(app.getPath('userData'), 'config.json');
@@ -12,9 +16,10 @@ const CONFIG_FILE = join(app.getPath('userData'), 'config.json');
 function readConfig(): TenantConfig | null {
   try {
     const raw = readFileSync(CONFIG_FILE, 'utf-8');
-    const parsed = JSON.parse(raw) as { webUrl?: string };
-    if (typeof parsed.webUrl === 'string' && parsed.webUrl.startsWith('http')) {
-      return { webUrl: parsed.webUrl };
+    const parsed = JSON.parse(raw) as { apiUrl?: string; webUrl?: string };
+    // apiUrl is the new field; webUrl is the legacy thin-client field, ignored.
+    if (typeof parsed.apiUrl === 'string' && parsed.apiUrl.startsWith('http')) {
+      return { apiUrl: parsed.apiUrl };
     }
     return null;
   } catch {
@@ -27,6 +32,33 @@ function writeConfig(config: TenantConfig): void {
   writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
 }
 
+// ── Bundled web (custom app:// protocol with SPA fallback) ───────────────────
+const WEB_DIR = join(__dirname, 'web');
+const APP_SCHEME = 'app';
+const APP_ORIGIN = `${APP_SCHEME}://-/`;
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: APP_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true },
+  },
+]);
+
+function registerAppProtocol(): void {
+  protocol.handle(APP_SCHEME, (request) => {
+    const pathname = decodeURIComponent(new URL(request.url).pathname);
+    const filePath = join(WEB_DIR, pathname);
+    // Serve the real asset when it exists; otherwise fall back to index.html so
+    // client-side routes (BrowserRouter) resolve under file loading.
+    const serve =
+      pathname !== '/' && existsSync(filePath) && statSync(filePath).isFile()
+        ? filePath
+        : join(WEB_DIR, 'index.html');
+    return net.fetch(pathToFileURL(serve).toString());
+  });
+}
+
+// ── Setup window (asks for the tenant API URL, once) ─────────────────────────
 const SETUP_HTML = `<!DOCTYPE html>
 <html>
 <head>
@@ -44,15 +76,14 @@ const SETUP_HTML = `<!DOCTYPE html>
     .error { color: #dc2626; font-size: 12px; margin-top: 6px; min-height: 16px; }
     button { margin-top: 20px; width: 100%; padding: 10px; background: #2563eb; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
     button:hover { background: #1d4ed8; }
-    button:active { background: #1e40af; }
   </style>
 </head>
 <body>
   <div class="card">
     <h2>Configurar sucursal</h2>
-    <p class="sub">Ingresa la URL del sistema asignada a esta sucursal. Solo necesitas hacer esto una vez.</p>
-    <label for="url">URL de la sucursal</label>
-    <input id="url" type="url" placeholder="https://polleria-tusucursal.groowtech.com" autocomplete="off" />
+    <p class="sub">Ingresa la URL del API asignada a esta sucursal. Solo necesitas hacerlo una vez.</p>
+    <label for="url">URL del API</label>
+    <input id="url" type="url" placeholder="https://api-polleria-tusucursal.groowtech.com" autocomplete="off" />
     <div class="error" id="err"></div>
     <button onclick="save()">Guardar y continuar</button>
   </div>
@@ -93,7 +124,7 @@ function createSetupWindow(): BrowserWindow {
   return win;
 }
 
-function createMainWindow(webUrl: string): BrowserWindow {
+function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -107,41 +138,42 @@ function createMainWindow(webUrl: string): BrowserWindow {
     },
   });
   win.setMenuBarVisibility(false);
-  void win.loadURL(webUrl);
+  if (app.isPackaged) {
+    void win.loadURL(APP_ORIGIN);
+  } else {
+    // Dev: the Vite dev server serves the web with its /api and /health proxy.
+    void win.loadURL(process.env.ELECTRON_RENDERER_URL ?? 'http://localhost:5173');
+  }
   return win;
 }
 
 app.whenReady().then(() => {
+  registerAppProtocol();
+
+  // CSP: allow the bundled app origin + the remote API (https/wss) for fetch.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self' https: wss:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;",
+          "default-src 'self' app:; connect-src 'self' app: https: wss: http://localhost:*; script-src 'self' 'unsafe-inline' app:; style-src 'self' 'unsafe-inline' app:; img-src 'self' app: data: https:;",
         ],
       },
     });
   });
 
   const config = readConfig();
-
   if (!config) {
     createSetupWindow();
   } else {
-    mainWindow = createMainWindow(config.webUrl);
-    if (app.isPackaged) {
-      autoUpdater.checkForUpdatesAndNotify();
-    }
+    mainWindow = createMainWindow();
+    if (app.isPackaged) autoUpdater.checkForUpdatesAndNotify();
   }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      const currentConfig = readConfig();
-      if (currentConfig) {
-        mainWindow = createMainWindow(currentConfig.webUrl);
-      } else {
-        createSetupWindow();
-      }
+      if (readConfig()) mainWindow = createMainWindow();
+      else createSetupWindow();
     }
   });
 });
@@ -150,14 +182,16 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-ipcMain.handle('save-config', (_event, webUrl: string) => {
-  writeConfig({ webUrl });
-  const setupWins = BrowserWindow.getAllWindows();
-  setupWins.forEach((w) => w.close());
-  mainWindow = createMainWindow(webUrl);
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdatesAndNotify();
-  }
+// Synchronous bridge so the renderer reads the configured API URL at module init.
+ipcMain.on('get-api-url', (event) => {
+  event.returnValue = readConfig()?.apiUrl ?? '';
+});
+
+ipcMain.handle('save-config', (_event, apiUrl: string) => {
+  writeConfig({ apiUrl });
+  BrowserWindow.getAllWindows().forEach((w) => w.close());
+  mainWindow = createMainWindow();
+  if (app.isPackaged) autoUpdater.checkForUpdatesAndNotify();
 });
 
 ipcMain.handle(
@@ -186,9 +220,8 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('get-printers', async (_event) => {
-  const wins = BrowserWindow.getAllWindows();
-  const win = wins[0];
+ipcMain.handle('get-printers', async () => {
+  const win = BrowserWindow.getAllWindows()[0];
   if (!win) return [];
   const printers = await win.webContents.getPrintersAsync();
   return printers.map((p) => ({ name: p.name, displayName: p.displayName }));
