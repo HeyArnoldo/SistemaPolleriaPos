@@ -91,10 +91,21 @@ inicio) lo rompen. Si el commit falla, reescribir el subject en minúsculas.
 - **El runtime de Electron NO es verificable en CI** (solo compila `main`/`preload`).
   Hay que construir el instalador (`pnpm --filter @app/desktop dist:win`) y correrlo
   para validar carga local, offline y la URL del API en runtime.
-- **Auth cross-origin (la trampa más probable):** el login ONLINE va del origen
-  `app://` al API `https://` → es cross-site. La cookie de sesión httpOnly puede no
-  viajar. Si el login no anda en el instalador, poner **`COOKIE_SAMESITE=none`** en
-  el API y permitir el origen `app://` en el CORS.
+- **CORS del origen `app://-` (la trampa más probable):** el web empaquetado corre
+  en el origen exacto **`app://-`** (esquema `app`, host `-`; ver `APP_ORIGIN` en
+  `apps/desktop/electron/main.ts`). El chequeo de conectividad (`useConnectivity` →
+  `GET /health` con `withCredentials: true`) y el login van de `app://-` al API
+  `https://` → cross-site. El backend usa `enableCors({ origin: CORS_ORIGIN, credentials: true })`,
+  que con credenciales exige orígenes EXACTOS (nunca `*`). Si `CORS_ORIGIN` no
+  incluye `app://-`, el navegador descarta la respuesta de `/health` y la app
+  muestra **"Sin conexión" aunque haya internet y la URL sea correcta**.
+  **Fix:** agregar `app://-` a `CORS_ORIGIN` en el API (ej. `CORS_ORIGIN=https://tu-web,app://-`)
+  y redeployar. Para el login además puede hacer falta **`COOKIE_SAMESITE=none`**
+  (cookie httpOnly cross-site).
+- **Reconfigurar la sucursal:** la URL del API se guarda en `config.json` dentro de
+  `app.getPath('userData')` (`%APPDATA%/PolleriaPOS/config.json`). Desde la app se
+  cambia en Configuración → "Cambiar sucursal" (`electronAPI.openSetup`); a mano,
+  borrar ese archivo y reabrir.
 - **Un equipo que nunca se conectó no tiene catálogo ni PIN.** El offline requiere
   ≥1 sincronización inicial (online) para cachear catálogo + recibir el PIN.
 - La persistencia de TanStack Query guarda **solo el catálogo** (no auth/ventas/BI).

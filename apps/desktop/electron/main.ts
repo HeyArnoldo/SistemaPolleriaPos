@@ -4,6 +4,11 @@ import { join } from 'path';
 import { pathToFileURL } from 'url';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'fs';
 
+// Pin a clean app name BEFORE any app.getPath('userData') call, so the user-data
+// folder is %APPDATA%/PolleriaPOS instead of the scoped npm package name
+// (@app/desktop). Must run before CONFIG_FILE below is evaluated.
+app.setName('PolleriaPOS');
+
 // ── Tenant config ───────────────────────────────────────────────────────────
 // Fat client: the web is bundled inside the app and loaded locally, so the app
 // opens with or without internet. Only the API URL is configured per tenant.
@@ -88,6 +93,9 @@ const SETUP_HTML = `<!DOCTYPE html>
     <button onclick="save()">Guardar y continuar</button>
   </div>
   <script>
+    // Prefill with the current URL when reconfiguring; empty on first setup.
+    document.getElementById('url').value =
+      (window.electronAPI && window.electronAPI.apiUrl) || '';
     document.getElementById('url').addEventListener('keydown', function(e) {
       if (e.key === 'Enter') save();
     });
@@ -106,6 +114,7 @@ const SETUP_HTML = `<!DOCTYPE html>
 </html>`;
 
 let mainWindow: BrowserWindow | null = null;
+let setupWindow: BrowserWindow | null = null;
 
 // Window/taskbar icon shipped next to main.js by copy-web.mjs. The Windows exe
 // icon is embedded by electron-builder; this covers the window chrome and dev.
@@ -113,6 +122,11 @@ const ICON_PATH = join(__dirname, 'icon.png');
 const windowIcon = existsSync(ICON_PATH) ? ICON_PATH : undefined;
 
 function createSetupWindow(): BrowserWindow {
+  // Reuse the existing setup window instead of stacking duplicates.
+  if (setupWindow && !setupWindow.isDestroyed()) {
+    setupWindow.focus();
+    return setupWindow;
+  }
   const win = new BrowserWindow({
     width: 520,
     height: 360,
@@ -126,6 +140,10 @@ function createSetupWindow(): BrowserWindow {
     },
   });
   win.setMenuBarVisibility(false);
+  win.on('closed', () => {
+    setupWindow = null;
+  });
+  setupWindow = win;
   void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(SETUP_HTML)}`);
   return win;
 }
@@ -199,6 +217,12 @@ ipcMain.handle('save-config', (_event, apiUrl: string) => {
   BrowserWindow.getAllWindows().forEach((w) => w.close());
   mainWindow = createMainWindow();
   if (app.isPackaged) autoUpdater.checkForUpdatesAndNotify();
+});
+
+// Re-open the setup window so the operator can change the branch API URL without
+// hunting for config.json. The setup form is prefilled with the current URL.
+ipcMain.handle('open-setup', () => {
+  createSetupWindow();
 });
 
 ipcMain.handle(

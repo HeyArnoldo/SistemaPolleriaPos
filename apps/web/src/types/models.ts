@@ -288,6 +288,8 @@ declare global {
       ) => Promise<void>;
       getPrinters?: () => Promise<{ name: string; displayName?: string }[]>;
       saveConfig: (apiUrl: string) => Promise<void>;
+      /** Re-open the branch setup window to change the configured API URL. */
+      openSetup?: () => Promise<void>;
     };
   }
 }
