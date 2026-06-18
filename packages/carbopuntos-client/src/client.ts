@@ -97,7 +97,9 @@ export class CarbopuntosClient {
    * Llama GET /customers/:dni/balance
    */
   async getBalance(dni: string): Promise<Balance> {
-    const { data } = await this.request(() => this.http.get<unknown>(`/customers/${dni}/balance`));
+    const { data } = await this.request(() =>
+      this.http.get<unknown>(`/customers/${encodeURIComponent(dni)}/balance`),
+    );
     return balanceSchema.parse(data);
   }
 
@@ -118,7 +120,9 @@ export class CarbopuntosClient {
    * Llama GET /customers/:dni/history
    */
   async getHistory(dni: string): Promise<PointsMovement[]> {
-    const { data } = await this.request(() => this.http.get<unknown>(`/customers/${dni}/history`));
+    const { data } = await this.request(() =>
+      this.http.get<unknown>(`/customers/${encodeURIComponent(dni)}/history`),
+    );
     return movementListSchema.parse(data);
   }
 
