@@ -1,0 +1,74 @@
+change: carbopuntos
+created_at: "2026-06-18"
+artifact_store: hybrid
+delivery_strategy: stacked-to-main
+
+dag:
+  - id: WU-0
+    name: Decisiones cerradas
+    status: done
+    branch: ~
+    unlocks: [WU-1]
+
+  - id: WU-1
+    name: "@app/carbopuntos-contracts (gate)"
+    status: ready
+    branch: feat/carbopuntos-wu1
+    depends_on: [WU-0]
+    unlocks: [WU-2, WU-3]
+    notes: |
+      Mergea primero. Sin este paquete compilado, lint/typecheck fallan en WU-2..WU-6.
+      CI actualizado para buildear este paquete antes de lint/typecheck.
+
+  - id: WU-2
+    name: Hub scaffold + entidades + migración
+    status: blocked
+    branch: feat/carbopuntos-wu2
+    depends_on: [WU-1]
+    unlocks: [WU-4]
+    notes: "Requiere WU-1 mergeado. Puede ejecutarse en paralelo con WU-3."
+
+  - id: WU-3
+    name: "@app/carbopuntos-client"
+    status: blocked
+    branch: feat/carbopuntos-wu3
+    depends_on: [WU-1]
+    unlocks: [WU-4, WU-5]
+    notes: "Requiere WU-1 mergeado. Puede ejecutarse en paralelo con WU-2."
+
+  - id: WU-4
+    name: Hub endpoints
+    status: blocked
+    branch: feat/carbopuntos-wu4
+    depends_on: [WU-2, WU-3]
+    unlocks: [WU-5]
+    notes: |
+      Requiere WU-2 (entidades/migración) y WU-3 (cliente) mergeados.
+      Tests e2e locales con Postgres real (no en CI).
+
+  - id: WU-5
+    name: Integración apps/api
+    status: blocked
+    branch: feat/carbopuntos-wu5
+    depends_on: [WU-3, WU-4]
+    unlocks: [WU-6]
+    notes: "Requiere WU-3 (cliente) y WU-4 (hub con endpoints) mergeados."
+
+  - id: WU-6
+    name: Frontend apps/web
+    status: blocked
+    branch: feat/carbopuntos-wu6
+    depends_on: [WU-5]
+    unlocks: []
+    notes: "Requiere WU-5 mergeado. Es la última unidad de trabajo."
+
+current_wave:
+  - WU-1
+
+next_wave:
+  - WU-2
+  - WU-3
+
+gate: >
+  Suite completa verde tras rebase sobre main antes de cada PR.
+  Estrategia: stacked-to-main (WU-1 mergea primero; el resto rebasa sobre main en orden de dependencias).
