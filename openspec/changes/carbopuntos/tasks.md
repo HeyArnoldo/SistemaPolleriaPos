@@ -72,7 +72,7 @@ antes del lint.
 
 ### Tareas
 
-- [ ] **T2.1** TEST: crear `apps/carbopuntos/test/health.e2e-spec.ts` (supertest local, PG real)
+- [x] **T2.1** TEST: crear `apps/carbopuntos/test/health.e2e-spec.ts` (supertest local, PG real)
       — GET `/health` retorna 200. Verificar que el entrypoint levanta correctamente.
       _(postergado a WU-4: requiere Postgres vivo; no aplica en WU-2 unit-only)_
 - [x] **T2.2** IMPL: scaffold de `apps/carbopuntos` siguiendo `apps/api`:
@@ -96,7 +96,7 @@ antes del lint.
       Columnas: `id`, `sede` (unique), `service_key_hash`, `is_active`.
 - [x] **T2.10** IMPL: migración `CreateCarbopuntosSchema` con todas las tablas y sus índices.
       Escrita a mano, coherente con entidades. down() incluido.
-- [ ] **T2.11** TEST: `apps/carbopuntos/test/migrations.e2e-spec.ts` (supertest local) —
+- [x] **T2.11** TEST: `apps/carbopuntos/test/migrations.e2e-spec.ts` (supertest local) —
       verificar que la DB queda con el schema correcto tras migration:run.
       _(postergado a WU-4: requiere Postgres vivo)_
 - [x] **T2.12** VERIFY: `pnpm --filter @app/carbopuntos build` compila. Suite verde. Rebase sobre main.
@@ -145,45 +145,45 @@ antes del lint.
 
 ### Tareas
 
-- [ ] **T4.1** TEST: `apps/carbopuntos/test/auth.e2e-spec.ts` (supertest local) — verificar que
+- [x] **T4.1** TEST: `apps/carbopuntos/test/auth.e2e-spec.ts` (supertest local) — verificar que
       un request sin `Authorization` devuelve 401, y con un service key válido retorna 200.
-- [ ] **T4.2** IMPL: `src/auth/guards/service-key.guard.ts` — `ServiceKeyGuard`, valida
+- [x] **T4.2** IMPL: `src/auth/guards/service-key.guard.ts` — `ServiceKeyGuard`, valida
       `Authorization: Bearer <key>` contra `SedeCredential` (bcryptjs), inyecta `req.sede`.
-- [ ] **T4.3** TEST: `apps/carbopuntos/test/customers.e2e-spec.ts` (supertest + PG real) —
+- [x] **T4.3** TEST: `apps/carbopuntos/test/customers.e2e-spec.ts` (supertest + PG real) —
       flujo: afiliar cliente nuevo (mock json.pe), consultar por DNI, buscar por nombre.
-- [ ] **T4.4** IMPL: `src/customers/services/dni.service.ts` — `DniService`, llama
+- [x] **T4.4** IMPL: `src/customers/services/dni.service.ts` — `DniService`, llama
       `POST https://api.json.pe/api/dni`, valida `^[0-9]{8}$`, maneja 404/timeout.
-- [ ] **T4.5** IMPL: `src/customers/customers.module.ts`, `customers.controller.ts`,
+- [x] **T4.5** IMPL: `src/customers/customers.module.ts`, `customers.controller.ts`,
       `customers.service.ts`.
       Endpoints: `POST /customers` (afiliar: buscar local → si no, json.pe → crear),
       `GET /customers/search?q=`, `GET /customers/:dni`.
-- [ ] **T4.6** TEST: `apps/carbopuntos/test/history.e2e-spec.ts` — GET `/customers/:dni/history`
+- [x] **T4.6** TEST: `apps/carbopuntos/test/history.e2e-spec.ts` — GET `/customers/:dni/history`
       devuelve movimientos cross-sede, cada uno con su campo `sede`.
-- [ ] **T4.7** IMPL: endpoint `GET /customers/:dni/history` en `customers.controller.ts`.
-- [ ] **T4.8** TEST: `apps/carbopuntos/test/accrue.e2e-spec.ts` — acumular puntos, reintentar
+- [x] **T4.7** IMPL: endpoint `GET /customers/:dni/history` en `customers.controller.ts`.
+- [x] **T4.8** TEST: `apps/carbopuntos/test/accrue.e2e-spec.ts` — acumular puntos, reintentar
       con misma `idempotency_key` → respuesta idempotente (mismo movimiento, no duplicado).
-- [ ] **T4.9** IMPL: `src/points/points.module.ts`, `points.controller.ts`, `points.service.ts`.
+- [x] **T4.9** IMPL: `src/points/points.module.ts`, `points.controller.ts`, `points.service.ts`.
       Endpoint: `POST /points/accrue` — acumulación idempotente, transacción + optimistic lock.
-- [ ] **T4.10** TEST: `apps/carbopuntos/test/redeem.e2e-spec.ts` — canjear con saldo suficiente,
+- [x] **T4.10** TEST: `apps/carbopuntos/test/redeem.e2e-spec.ts` — canjear con saldo suficiente,
       rechazar con saldo insuficiente, dos sedes concurrentes (lock serializa).
-- [ ] **T4.11** IMPL: endpoint `POST /points/redeem` — canje transaccional con lock, rechaza
+- [x] **T4.11** IMPL: endpoint `POST /points/redeem` — canje transaccional con lock, rechaza
       si saldo insuficiente.
-- [ ] **T4.12** TEST: `apps/carbopuntos/test/operation.e2e-spec.ts` — operación mixta
+- [x] **T4.12** TEST: `apps/carbopuntos/test/operation.e2e-spec.ts` — operación mixta
       (acumulación + canje) atómica: si falla el canje, la acumulación no se aplica.
-- [ ] **T4.13** IMPL: endpoint `POST /points/operation` — operación mixta en una sola transacción.
-- [ ] **T4.14** TEST: `apps/carbopuntos/test/reverse.e2e-spec.ts` — reversa que resta puntos;
+- [x] **T4.13** IMPL: endpoint `POST /points/operation` — operación mixta en una sola transacción.
+- [x] **T4.14** TEST: `apps/carbopuntos/test/reverse.e2e-spec.ts` — reversa que resta puntos;
       reversa sobre venta sin acumulación previa → no-op; reversa que excede el saldo → topa en 0.
-- [ ] **T4.15** IMPL: endpoint `POST /points/reverse` — reversa por `sale_ref`, no-op si no existe
+- [x] **T4.15** IMPL: endpoint `POST /points/reverse` — reversa por `sale_ref`, no-op si no existe
       acumulación previa (C15), topa saldo en 0 (D6).
-- [ ] **T4.16** TEST: `apps/carbopuntos/test/adjust.e2e-spec.ts` — ajuste manual con motivo,
+- [x] **T4.16** TEST: `apps/carbopuntos/test/adjust.e2e-spec.ts` — ajuste manual con motivo,
       entrada en `AdminAudit`, saldo actualizado.
-- [ ] **T4.17** IMPL: endpoint `POST /points/adjust` — ajuste manual admin, motivo obligatorio,
+- [x] **T4.17** IMPL: endpoint `POST /points/adjust` — ajuste manual admin, motivo obligatorio,
       `AdminAudit` escrito en la misma transacción.
-- [ ] **T4.18** TEST: `apps/carbopuntos/test/void.e2e-spec.ts` — anular movimiento (soft-delete),
+- [x] **T4.18** TEST: `apps/carbopuntos/test/void.e2e-spec.ts` — anular movimiento (soft-delete),
       saldo recalculado, `AdminAudit` creado, movimiento anulado no vuelve a anularse.
-- [ ] **T4.19** IMPL: endpoint `POST /movements/:id/void` — soft-delete, recalcula saldo,
+- [x] **T4.19** IMPL: endpoint `POST /movements/:id/void` — soft-delete, recalcula saldo,
       escribe `AdminAudit`.
-- [ ] **T4.20** VERIFY: todos los tests e2e del hub pasan localmente con PG real.
+- [x] **T4.20** VERIFY: todos los tests e2e del hub pasan localmente con PG real.
       `pnpm --filter @app/carbopuntos build` compila. Rebase sobre main.
 
 **Hecho cuando:** todos los endpoints del hub operan con idempotencia, locking y auditoría correctos.
