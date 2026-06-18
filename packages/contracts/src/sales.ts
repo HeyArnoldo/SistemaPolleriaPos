@@ -57,6 +57,17 @@ export const createSaleSchema = z
         path: ['items'],
       });
     }
+    // A sale that carries products MUST have at least one payment. Solo-canje
+    // (empty items + redemptions) is exempt — it has no monetary total (F5/D4).
+    // Without this guard a product sale with payments:[] would persist as `paid`
+    // with zero payments.
+    if (hasItems && data.payments.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Una venta con productos requiere al menos un pago',
+        path: ['payments'],
+      });
+    }
     // Redemptions always require a customer DNI (D1 — canje requires hub online + customer).
     if (hasRedemptions && !data.customerDni) {
       ctx.addIssue({
