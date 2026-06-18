@@ -30,6 +30,9 @@ jobs:
       - name: Build contracts
         run: pnpm --filter @app/contracts build
 
+      - name: Build carbopuntos-contracts
+        run: pnpm --filter @app/carbopuntos-contracts build
+
       - name: Lint
         run: pnpm lint
 

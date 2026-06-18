@@ -1,0 +1,110 @@
+schema: spec-driven
+
+context: |
+  Project: SistemaPolleriaPos — POS for "Pollería Carbón" chain (multi-sede)
+  Stack: NestJS 11 + TypeORM 0.3 + PostgreSQL 16 | React 19 + Vite 7 + Tailwind v4 + shadcn/ui | Electron 36
+  Monorepo: pnpm 11 workspaces (apps/api, apps/web, apps/desktop, apps/carbopuntos[future], packages/contracts, packages/carbopuntos-contracts[future], packages/carbopuntos-client[future])
+  Architecture: Hexagonal/Screaming per domain; hub-central for CARBOPUNTOS (separate NestJS app + separate DB)
+  Deploy: Coolify (each app deploys independently); branch → PR → CI green → squash merge to main
+  Key constraints: synchronize:false (migrations only), decimals as string (z.coerce.number()), timezone America/Lima (UTC-5), literal routes before parametric (:id), bcryptjs not bcrypt
+
+testing:
+  strict_tdd: true
+  layers:
+    - name: api-unit
+      runner: jest
+      framework: "@nestjs/testing + ts-jest"
+      command: "pnpm --filter @app/api test"
+      scope: "apps/api"
+    - name: api-e2e
+      runner: jest+supertest
+      framework: "supertest + real Postgres LOCAL (not in CI)"
+      command: "manual — not wired to CI"
+      scope: "apps/api e2e"
+    - name: carbopuntos-unit
+      runner: jest
+      framework: "@nestjs/testing + ts-jest"
+      command: "pnpm --filter @app/carbopuntos test"
+      scope: "apps/carbopuntos (future hub)"
+    - name: carbopuntos-e2e
+      runner: jest+supertest
+      framework: "supertest + real Postgres LOCAL"
+      command: "manual — not wired to CI"
+      scope: "apps/carbopuntos e2e"
+    - name: web-unit
+      runner: vitest
+      framework: vitest
+      command: "pnpm --filter @app/web test"
+      scope: "apps/web"
+    - name: contracts-unit
+      runner: vitest
+      framework: vitest
+      command: "pnpm --filter @app/contracts test"
+      scope: "packages/contracts, packages/carbopuntos-contracts (future)"
+  global_quality:
+    lint: "pnpm lint"
+    typecheck: "pnpm typecheck"
+    build: "pnpm build"
+    test: "pnpm test"
+  ci_sequence:
+    - "pnpm install --frozen-lockfile"
+    - "pnpm --filter @app/contracts build"
+    - "pnpm lint"
+    - "pnpm typecheck"
+    - "pnpm build"
+    - "pnpm test"
+  ci_file: ".github/workflows/ci.yml"
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - State which apps/packages are affected (api, web, carbopuntos, contracts, carbopuntos-contracts, carbopuntos-client)
+    - Identify if DB schema changes are needed (migration required)
+    - Note CARBOPUNTOS domain boundary: local-per-sede vs shared-hub
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - For hub endpoints: specify idempotency key contract
+    - For financial fields: specify z.coerce.number() coercion
+  design:
+    - Include sequence diagrams for cross-service flows (sede → hub)
+    - Document architecture decisions with rationale
+    - Specify which DB owns which entities (sede DB vs hub DB)
+    - Degradation strategy: what happens when hub is unreachable
+  tasks:
+    - Group by phase (following CARBOPUNTOS-PLAN.md phases F0–F6 as reference)
+    - Use hierarchical numbering
+    - Keep tasks completable in one session
+    - For DB tasks: always include migration file creation
+    - For new packages: include build script and workspace registration
+  apply:
+    - Follow existing domain code patterns (use apps/api/src/sales as template)
+    - synchronize must remain false; schema changes via migrations only
+    - Decimal columns always arrive as string; coerce at boundary
+    - Literal routes before parametric routes
+    - No @BeforeInsert for password hashing (removed — see GOTCHAS)
+    - invalidateFinancialQueries after any sale/expense mutation
+    tdd: true
+    test_command: "pnpm --filter @app/api test"
+  verify:
+    test_command: "pnpm --filter @app/api test"
+    build_command: "pnpm build"
+    coverage_threshold: 0
+    extra_checks:
+      - "pnpm lint"
+      - "pnpm typecheck"
+  archive:
+    - Warn before merging destructive deltas
+    - Update openspec/specs/{domain}/spec.md with delta
+
+gotchas:
+  - "TypeORM decimal columns serialize as string — always z.coerce.number() at boundary"
+  - "Timezone: America/Lima (UTC-5, no DST) — use AT TIME ZONE in SQL, -05:00 offset in API dates"
+  - "Literal routes before :id routes — ParseIntPipe conflict"
+  - "No @BeforeInsert on User entity — double-hash trap (removed)"
+  - "invalidateFinancialQueries on every sale/expense/reset mutation"
+  - "CARBOPUNTOS: canje NEVER offline; acumulación can defer to sync queue"
+  - "Hub service-to-service auth: CARBOPUNTOS_SERVICE_KEY per sede (not user JWT)"
+  - "cancelSale() only sets is_canceled today — reversa de puntos is pending (D5)"
+  - "app:// origin for Electron desktop — must be in CORS_ORIGIN"
+  - "commitlint subject must be lowercase — siglas like GMT-5 at start break hook"
