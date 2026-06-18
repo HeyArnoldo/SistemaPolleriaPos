@@ -177,7 +177,9 @@ como variables de entorno. El hub identifica la sede por el service key, no por 
   original (no error, no duplicado).
 - **Saldo nunca negativo** (acumulación y redención): bloqueado a nivel de servicio.
   Reversa que excede → topar en 0 y registrar la diferencia en `detail` (D6).
-- **Ajuste manual**: puede dejar saldo negativo solo admin con motivo (D6/D8/D12 de DECISIONES).
+- **Ajuste manual**: el admin puede aplicar un delta negativo (con motivo obligatorio), pero un
+  ajuste que dejaría el saldo negativo se **bloquea** a nivel de servicio — el saldo nunca queda
+  negativo (D6/D8/D12 de DECISIONES).
 - **Transacciones**: toda operación que modifica `PointsBalance` + `PointsMovement` + `AdminAudit`
   usa `repo.manager.transaction(...)` (mismo patrón que `createSale` en `apps/api`).
 
