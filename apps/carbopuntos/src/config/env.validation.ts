@@ -13,6 +13,9 @@ export const envSchema = z.object({
 
   HUB_PORT: z.coerce.number().int().positive().default(3100),
 
+  // API key de json.pe para consulta de DNI (D12). Solo el hub la usa.
+  JSONPE_API_KEY: z.string().optional(),
+
   // Claves de las sedes (se usan en el seed — se hashean con bcryptjs).
   // Formato: clave plana desde env, nunca hardcodeada en código.
   SEDE_KEY_URUBAMBA: z.string().optional(),

@@ -13,7 +13,8 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/typeorm.config.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/typeorm.config.ts",
     "seed": "ts-node src/database/seeds/run-seed.ts",
-    "test": "jest"
+    "test": "jest",
+    "test:e2e": "jest --config test/jest-e2e.json --runInBand"
   },
   "dependencies": {
     "@app/carbopuntos-contracts": "workspace:*",
@@ -41,8 +42,10 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
+    "@types/supertest": "^7.2.0",
     "eslint": "^9.18.0",
     "jest": "^30.0.0",
+    "supertest": "^7.2.2",
     "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
@@ -56,14 +59,18 @@
       "ts"
     ],
     "rootDir": ".",
-    "testRegex": ".*(spec|test)\\.ts$",
+    "testRegex": "src/.*\\.(spec|test)\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "testEnvironment": "node",
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/dist/"
-    ]
+      "/dist/",
+      "/test/"
+    ],
+    "moduleNameMapper": {
+      "^@app/carbopuntos-contracts$": "<rootDir>/../../packages/carbopuntos-contracts/src/index.ts"
+    }
   }
 }

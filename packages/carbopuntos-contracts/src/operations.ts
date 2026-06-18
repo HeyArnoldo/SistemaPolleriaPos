@@ -54,7 +54,9 @@ export type ReverseInput = z.infer<typeof reverseSchema>;
 // Manual balance adjustment performed by an admin.
 // reason is REQUIRED (audit trail, D8).
 // idempotencyKey is NOT required (admin operation, no retry risk).
-// Negative points allowed (admin can correct a balance below zero — D6/D12).
+// Negative deltas are allowed (admin can reduce a balance), but the resulting
+// balance can NEVER go below zero: an adjustment that would leave it negative is
+// BLOCKED at the service level (D6). Validation here only checks the delta is an integer.
 export const adjustSchema = z.object({
   customerDni: z.string().regex(dniPattern),
   points: z.coerce.number().int(),
