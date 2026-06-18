@@ -1,10 +1,16 @@
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Lock, LogIn, Loader2 } from 'lucide-react';
+import { Lock, LogIn, Loader2, WifiOff } from 'lucide-react';
 import { loginSchema, type LoginInput } from '@app/contracts';
 import { useLogin, useMe } from '@/hooks/use-auth';
+import { useConnectivity } from '@/hooks/use-connectivity';
+import { useOfflineAuth } from '@/contexts/offline-auth-context';
+import { hasOfflinePin, getStoredOfflineSession } from '@/lib/offline-pin';
+import type { StoredOfflineSession } from '@/lib/offline-pin';
+import { OfflinePinScreen } from '@/components/auth/offline-pin-screen';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,6 +20,17 @@ export default function LoginPage() {
   const { data: me } = useMe();
   const login = useLogin();
   const navigate = useNavigate();
+  const { isOnline, hasCheckedHealth } = useConnectivity();
+  const { enterOfflineMode } = useOfflineAuth();
+
+  const [pinConfigured, setPinConfigured] = useState(false);
+  const [offlineSession, setOfflineSession] = useState<StoredOfflineSession | undefined>(undefined);
+  const [showPin, setShowPin] = useState(false);
+
+  useEffect(() => {
+    void hasOfflinePin().then(setPinConfigured);
+    void getStoredOfflineSession().then(setOfflineSession);
+  }, []);
 
   const {
     register,
@@ -32,6 +49,17 @@ export default function LoginPage() {
       onError: () => toast.error('Credenciales inválidas'),
     });
   };
+
+  const canShowOfflineEntry = hasCheckedHealth && !isOnline && pinConfigured && offlineSession;
+
+  function handleOfflineSuccess(session: StoredOfflineSession) {
+    enterOfflineMode(session);
+    navigate('/ventas');
+  }
+
+  if (showPin && offlineSession) {
+    return <OfflinePinScreen session={offlineSession} onSuccess={handleOfflineSuccess} />;
+  }
 
   return (
     <section className="flex min-h-screen items-center justify-center bg-[#111827] p-4">
@@ -99,6 +127,25 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          {canShowOfflineEntry && (
+            <>
+              <div className="my-4 flex items-center gap-2">
+                <div className="h-px flex-1 bg-gray-200" />
+                <span className="text-xs text-gray-400">sin conexión</span>
+                <div className="h-px flex-1 bg-gray-200" />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                onClick={() => setShowPin(true)}
+              >
+                <WifiOff className="mr-2 h-5 w-5" />
+                Ingresar sin conexión
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     </section>

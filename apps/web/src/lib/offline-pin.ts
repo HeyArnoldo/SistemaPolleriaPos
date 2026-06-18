@@ -30,3 +30,19 @@ export async function verifyOfflinePin(pin: string, hash: string): Promise<boole
 export async function clearOfflinePin(): Promise<void> {
   await db.offlineSession.clear();
 }
+
+export async function saveGlobalOfflinePin(pin: string): Promise<void> {
+  const pinHash = await bcrypt.hash(pin, 4);
+  await db.offlineSession.clear();
+  await db.offlineSession.add({
+    userId: 0,
+    role: 'cashier',
+    username: 'cajero-offline',
+    displayName: 'Cajero (sin conexión)',
+    pinHash,
+  });
+}
+
+export async function hasOfflinePin(): Promise<boolean> {
+  return (await db.offlineSession.count()) > 0;
+}

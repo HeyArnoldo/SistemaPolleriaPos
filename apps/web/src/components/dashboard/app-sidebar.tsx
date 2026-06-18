@@ -1,10 +1,8 @@
-import { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { KeyRound, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useLogout, useMe } from '@/hooks/use-auth';
 import { useOfflineAuth } from '@/contexts/offline-auth-context';
 import { canAccessRoute } from '@/lib/permissions';
-import { SetPinDialog } from '@/components/auth/set-pin-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Sidebar,
@@ -37,7 +35,6 @@ export function AppSidebar() {
   const { data: user } = useMe();
   const logout = useLogout();
   const { isOfflineMode } = useOfflineAuth();
-  const [pinDialogOpen, setPinDialogOpen] = useState(false);
 
   const handleLogout = () => {
     logout.mutate(undefined, { onSuccess: () => navigate('/login') });
@@ -94,17 +91,6 @@ export function AppSidebar() {
             <p className="text-xs text-slate-400">Usuario</p>
             <p className="truncate text-sm font-semibold text-white">{userName}</p>
           </div>
-          {!isOfflineMode && user && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start gap-2 px-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-              onClick={() => setPinDialogOpen(true)}
-            >
-              <KeyRound className="size-3.5" />
-              Configurar PIN sin conexión
-            </Button>
-          )}
           <Button
             variant="destructive"
             className="h-10 w-full"
@@ -116,8 +102,6 @@ export function AppSidebar() {
           </Button>
         </SidebarFooter>
       </Sidebar>
-
-      {user && <SetPinDialog open={pinDialogOpen} onOpenChange={setPinDialogOpen} user={user} />}
     </>
   );
 }
