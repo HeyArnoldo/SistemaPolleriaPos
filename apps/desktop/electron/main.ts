@@ -188,6 +188,11 @@ function ulog(level: string, ...parts: unknown[]): void {
   }
 }
 
+// Push update status to the renderer so the Settings panel can show it live.
+function sendUpdateStatus(state: string, extra: Record<string, unknown> = {}): void {
+  mainWindow?.webContents.send('update-status', { state, ...extra });
+}
+
 let autoUpdaterConfigured = false;
 function configureAutoUpdater(): void {
   if (autoUpdaterConfigured) return;
@@ -200,20 +205,33 @@ function configureAutoUpdater(): void {
     debug: (m: unknown) => ulog('debug', m),
   };
 
-  autoUpdater.on('checking-for-update', () => ulog('event', 'checking-for-update'));
-  autoUpdater.on('update-available', (info) => ulog('event', 'update-available', info.version));
-  autoUpdater.on('update-not-available', (info) =>
-    ulog('event', 'update-not-available', info.version),
-  );
-  autoUpdater.on('download-progress', (p) =>
-    ulog('event', 'download-progress', `${Math.round(p.percent)}%`),
-  );
+  autoUpdater.on('checking-for-update', () => {
+    ulog('event', 'checking-for-update');
+    sendUpdateStatus('checking');
+  });
+  autoUpdater.on('update-available', (info) => {
+    ulog('event', 'update-available', info.version);
+    sendUpdateStatus('available', { version: info.version });
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    ulog('event', 'update-not-available', info.version);
+    sendUpdateStatus('not-available', { version: info.version });
+  });
+  autoUpdater.on('download-progress', (p) => {
+    ulog('event', 'download-progress', `${Math.round(p.percent)}%`);
+    sendUpdateStatus('downloading', { percent: Math.round(p.percent) });
+  });
   autoUpdater.on('update-downloaded', (info) => {
     ulog('event', 'update-downloaded', info.version);
     // Tell the renderer so it can offer a "restart to update" action.
     mainWindow?.webContents.send('update-downloaded', { version: info.version });
+    sendUpdateStatus('downloaded', { version: info.version });
   });
-  autoUpdater.on('error', (err) => ulog('error', 'updater-error', err?.message ?? String(err)));
+  autoUpdater.on('error', (err) => {
+    const message = err?.message ?? String(err);
+    ulog('error', 'updater-error', message);
+    sendUpdateStatus('error', { message });
+  });
 }
 
 app.whenReady().then(() => {
@@ -273,6 +291,23 @@ ipcMain.handle('open-setup', () => {
 // Quit and install a downloaded update (triggered from the in-app "restart" toast).
 ipcMain.handle('quit-and-install', () => {
   autoUpdater.quitAndInstall();
+});
+
+// Current app version, shown in the Settings update panel.
+ipcMain.handle('get-app-version', () => app.getVersion());
+
+// Manual update check from the Settings panel. Progress/result arrive via the
+// 'update-status' channel (see configureAutoUpdater).
+ipcMain.handle('check-for-updates', async () => {
+  if (!app.isPackaged) {
+    sendUpdateStatus('error', { message: 'Solo disponible en la app instalada.' });
+    return;
+  }
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    sendUpdateStatus('error', { message: (err as Error)?.message ?? String(err) });
+  }
 });
 
 ipcMain.handle(

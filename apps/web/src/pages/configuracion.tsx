@@ -9,6 +9,7 @@ import { PrinterDebugPanel } from '@/components/dashboard/configuracion/printer-
 import { CashReportCard } from '@/components/dashboard/caja/cash-report-card';
 import { OfflinePinCard } from '@/components/dashboard/configuracion/offline-pin-card';
 import { TenantSettingsCard } from '@/components/dashboard/configuracion/tenant-settings-card';
+import { UpdatePanelCard } from '@/components/dashboard/configuracion/update-panel-card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Printer, ShieldAlert } from 'lucide-react';
 import { getPrintSettings, savePrintSettings, isElectronEnv } from '@/lib/print-settings';
@@ -106,6 +107,8 @@ export default function ConfiguracionPage() {
       <PaymentMethodsCard />
 
       {isElectron && <TenantSettingsCard />}
+
+      {isElectron && <UpdatePanelCard />}
 
       <OfflinePinCard />
 
