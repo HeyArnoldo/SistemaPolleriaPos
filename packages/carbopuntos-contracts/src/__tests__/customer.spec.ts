@@ -147,4 +147,28 @@ describe('customerSearchSchema', () => {
     const result = customerSearchSchema.safeParse({ q: '' });
     expect(result.success).toBe(false);
   });
+
+  it('coerces numeric query-string limit/offset (they arrive as strings)', () => {
+    const result = customerSearchSchema.safeParse({ q: 'Castillo', limit: '10', offset: '5' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.limit).toBe(10);
+      expect(result.data.offset).toBe(5);
+    }
+  });
+
+  it('rejects a non-numeric limit', () => {
+    const result = customerSearchSchema.safeParse({ q: 'Castillo', limit: 'abc' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-positive limit after coercion', () => {
+    const result = customerSearchSchema.safeParse({ q: 'Castillo', limit: '0' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a negative offset after coercion', () => {
+    const result = customerSearchSchema.safeParse({ q: 'Castillo', offset: '-1' });
+    expect(result.success).toBe(false);
+  });
 });

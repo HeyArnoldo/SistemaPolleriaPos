@@ -40,7 +40,8 @@ export type AffiliateCustomerInput = z.infer<typeof affiliateCustomerSchema>;
 // Query params for searching customers (by name or partial DNI).
 export const customerSearchSchema = z.object({
   q: z.string().min(1, 'Search query must not be empty'),
-  limit: z.number().int().positive().optional(),
-  offset: z.number().int().min(0).optional(),
+  // Query params arrive as strings; coerce to int while keeping validation.
+  limit: z.coerce.number().int().positive().optional(),
+  offset: z.coerce.number().int().min(0).optional(),
 });
 export type CustomerSearchInput = z.infer<typeof customerSearchSchema>;
