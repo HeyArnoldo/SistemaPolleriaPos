@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { KeyRound, LogOut } from 'lucide-react';
 import { useLogout, useMe } from '@/hooks/use-auth';
 import { useOfflineAuth } from '@/contexts/offline-auth-context';
 import { canAccessRoute } from '@/lib/permissions';
@@ -87,29 +88,31 @@ export function AppSidebar() {
           ))}
         </SidebarContent>
 
-        <SidebarFooter>
-          <div className="border-slate-700 border-t" />
-          <div>
+        <SidebarFooter className="gap-3 p-3">
+          <div className="border-t border-slate-700" />
+          <div className="px-1">
             <p className="text-xs text-slate-400">Usuario</p>
-            <p className="font-semibold text-white truncate text-sm">{userName}</p>
+            <p className="truncate text-sm font-semibold text-white">{userName}</p>
           </div>
           {!isOfflineMode && user && (
             <Button
               variant="ghost"
               size="sm"
-              className="w-full justify-start text-xs text-slate-400 hover:text-slate-100 px-0"
+              className="w-full justify-start gap-2 px-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-100"
               onClick={() => setPinDialogOpen(true)}
             >
-              🔑 Configurar PIN sin conexión
+              <KeyRound className="size-3.5" />
+              Configurar PIN sin conexión
             </Button>
           )}
           <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start text-slate-400 hover:text-slate-100"
+            variant="destructive"
+            className="h-10 w-full"
             onClick={handleLogout}
+            disabled={logout.isPending}
           >
-            Cerrar sesión
+            <LogOut className="mr-2 size-4" />
+            {logout.isPending ? 'Cerrando sesión...' : 'Cerrar sesión'}
           </Button>
         </SidebarFooter>
       </Sidebar>
