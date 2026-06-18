@@ -6,6 +6,7 @@ import { queryClient } from '@/lib/query-client';
 import { queryPersister, shouldPersistQuery } from '@/lib/query-persister';
 import { router } from '@/router';
 import { Toaster } from '@/components/ui/sonner';
+import { DesktopUpdateWatcher } from '@/components/desktop-update-watcher';
 import { OfflineAuthProvider } from '@/contexts/offline-auth-context';
 import './index.css';
 
@@ -28,6 +29,7 @@ createRoot(document.getElementById('root')!).render(
         <Suspense fallback={null}>
           <RouterProvider router={router} />
         </Suspense>
+        <DesktopUpdateWatcher />
         <Toaster richColors />
       </OfflineAuthProvider>
     </PersistQueryClientProvider>
