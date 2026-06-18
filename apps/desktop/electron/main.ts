@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, session, protocol, net } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, appendFileSync } from 'fs';
 
 // Pin a clean app name BEFORE any app.getPath('userData') call, so the user-data
 // folder is %APPDATA%/PolleriaPOS instead of the scoped npm package name
@@ -172,8 +172,53 @@ function createMainWindow(): BrowserWindow {
   return win;
 }
 
+// ── Auto-update: logging + events ────────────────────────────────────────────
+// Append to userData/updater.log so the update flow is observable in the field
+// (the packaged app has no console). Also mirrored to stdout for dev.
+function ulog(level: string, ...parts: unknown[]): void {
+  const line = `${new Date().toISOString()} [${level}] ${parts
+    .map((p) => (typeof p === 'string' ? p : JSON.stringify(p)))
+    .join(' ')}`;
+  console.log('[updater]', line);
+  try {
+    mkdirSync(app.getPath('userData'), { recursive: true });
+    appendFileSync(join(app.getPath('userData'), 'updater.log'), line + '\n');
+  } catch {
+    /* never let logging break the updater */
+  }
+}
+
+let autoUpdaterConfigured = false;
+function configureAutoUpdater(): void {
+  if (autoUpdaterConfigured) return;
+  autoUpdaterConfigured = true;
+
+  autoUpdater.logger = {
+    info: (m: unknown) => ulog('info', m),
+    warn: (m: unknown) => ulog('warn', m),
+    error: (m: unknown) => ulog('error', m),
+    debug: (m: unknown) => ulog('debug', m),
+  };
+
+  autoUpdater.on('checking-for-update', () => ulog('event', 'checking-for-update'));
+  autoUpdater.on('update-available', (info) => ulog('event', 'update-available', info.version));
+  autoUpdater.on('update-not-available', (info) =>
+    ulog('event', 'update-not-available', info.version),
+  );
+  autoUpdater.on('download-progress', (p) =>
+    ulog('event', 'download-progress', `${Math.round(p.percent)}%`),
+  );
+  autoUpdater.on('update-downloaded', (info) => {
+    ulog('event', 'update-downloaded', info.version);
+    // Tell the renderer so it can offer a "restart to update" action.
+    mainWindow?.webContents.send('update-downloaded', { version: info.version });
+  });
+  autoUpdater.on('error', (err) => ulog('error', 'updater-error', err?.message ?? String(err)));
+}
+
 app.whenReady().then(() => {
   registerAppProtocol();
+  configureAutoUpdater();
 
   // CSP: allow the bundled app origin + the remote API (https/wss) for fetch.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -223,6 +268,11 @@ ipcMain.handle('save-config', (_event, apiUrl: string) => {
 // hunting for config.json. The setup form is prefilled with the current URL.
 ipcMain.handle('open-setup', () => {
   createSetupWindow();
+});
+
+// Quit and install a downloaded update (triggered from the in-app "restart" toast).
+ipcMain.handle('quit-and-install', () => {
+  autoUpdater.quitAndInstall();
 });
 
 ipcMain.handle(

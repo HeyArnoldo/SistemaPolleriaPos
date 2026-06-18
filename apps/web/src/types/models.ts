@@ -290,6 +290,10 @@ declare global {
       saveConfig: (apiUrl: string) => Promise<void>;
       /** Re-open the branch setup window to change the configured API URL. */
       openSetup?: () => Promise<void>;
+      /** Subscribe to "update downloaded"; returns an unsubscribe function. */
+      onUpdateDownloaded?: (callback: (info: { version?: string }) => void) => () => void;
+      /** Quit and install a downloaded update. */
+      restartToUpdate?: () => Promise<void>;
     };
   }
 }
