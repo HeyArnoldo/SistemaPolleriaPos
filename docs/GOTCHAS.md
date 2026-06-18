@@ -83,8 +83,27 @@ Un sub-agente de fix reportó haber aplicado 8 cambios con "CI verde" pero
 El subject del commit debe ir en minúsculas. Siglas en mayúscula (GMT-5, BI al
 inicio) lo rompen. Si el commit falla, reescribir el subject en minúsculas.
 
+## 10. Offline / desktop (Electron)
+
+- **El offline solo funciona en desktop con el fat client.** Si el Electron
+  cargara la web remota (modelo viejo), sin internet la app ni abre y el cache de
+  catálogo/PIN nunca ayuda. La web se sirve local vía `app://` (ver DOMAINS.md).
+- **El runtime de Electron NO es verificable en CI** (solo compila `main`/`preload`).
+  Hay que construir el instalador (`pnpm --filter @app/desktop dist:win`) y correrlo
+  para validar carga local, offline y la URL del API en runtime.
+- **Auth cross-origin (la trampa más probable):** el login ONLINE va del origen
+  `app://` al API `https://` → es cross-site. La cookie de sesión httpOnly puede no
+  viajar. Si el login no anda en el instalador, poner **`COOKIE_SAMESITE=none`** en
+  el API y permitir el origen `app://` en el CORS.
+- **Un equipo que nunca se conectó no tiene catálogo ni PIN.** El offline requiere
+  ≥1 sincronización inicial (online) para cachear catálogo + recibir el PIN.
+- La persistencia de TanStack Query guarda **solo el catálogo** (no auth/ventas/BI).
+  Si agregás una query que debe estar offline, sumá su key a `CATALOG_KEYS` en
+  `lib/query-persister.ts`.
+
 ## Pendiente / follow-up recomendado
 
 - **e2e con Postgres real** (supertest): crear venta vía API y verificar
   dashboard/egresos/sync. Es lo único que atrapa las clases 1, 2, 5, 6 antes de
   producción (los tests de schema/ruta no las ven).
+- **Validar el instalador desktop** offline + el login cross-origin (cookie).
