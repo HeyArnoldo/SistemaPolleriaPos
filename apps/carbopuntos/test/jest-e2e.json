@@ -1,0 +1,14 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testRegex": "test/.*\\.e2e-spec\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "testEnvironment": "node",
+  "testPathIgnorePatterns": ["/node_modules/", "/dist/"],
+  "testTimeout": 60000,
+  "moduleNameMapper": {
+    "^@app/carbopuntos-contracts$": "<rootDir>/../../packages/carbopuntos-contracts/src/index.ts"
+  }
+}
