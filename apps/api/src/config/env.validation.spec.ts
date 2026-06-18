@@ -21,12 +21,13 @@ describe('validateEnv — Carbopuntos STORE_ID rule', () => {
     expect(() => validateEnv({ ...baseEnv })).not.toThrow();
   });
 
-  it('passes when the hub is configured AND STORE_ID is present', () => {
+  it('passes when the hub is configured AND STORE_ID + SERVICE_KEY are present', () => {
     expect(() =>
       validateEnv({
         ...baseEnv,
         CARBOPUNTOS_HUB_URL: 'https://hub.example.com',
         STORE_ID: 'SEDE-01',
+        CARBOPUNTOS_SERVICE_KEY: 'svc-key-123',
       }),
     ).not.toThrow();
   });
@@ -41,6 +42,38 @@ describe('validateEnv — Carbopuntos STORE_ID rule', () => {
   });
 
   it('does NOT require STORE_ID when CARBOPUNTOS_HUB_URL is an empty string', () => {
+    expect(() =>
+      validateEnv({
+        ...baseEnv,
+        CARBOPUNTOS_HUB_URL: '',
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('validateEnv — Carbopuntos SERVICE_KEY rule', () => {
+  it('fails when the hub is configured but CARBOPUNTOS_SERVICE_KEY is missing', () => {
+    expect(() =>
+      validateEnv({
+        ...baseEnv,
+        CARBOPUNTOS_HUB_URL: 'https://hub.example.com',
+        STORE_ID: 'SEDE-01',
+      }),
+    ).toThrow(/CARBOPUNTOS_SERVICE_KEY/);
+  });
+
+  it('passes when the hub is configured AND both STORE_ID and SERVICE_KEY are present', () => {
+    expect(() =>
+      validateEnv({
+        ...baseEnv,
+        CARBOPUNTOS_HUB_URL: 'https://hub.example.com',
+        STORE_ID: 'SEDE-01',
+        CARBOPUNTOS_SERVICE_KEY: 'svc-key-123',
+      }),
+    ).not.toThrow();
+  });
+
+  it('does NOT require SERVICE_KEY when CARBOPUNTOS_HUB_URL is an empty string', () => {
     expect(() =>
       validateEnv({
         ...baseEnv,
