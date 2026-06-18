@@ -12,13 +12,22 @@ FROM base AS build
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/tsconfig/package.json packages/tsconfig/
 COPY packages/contracts/package.json packages/contracts/
+COPY packages/carbopuntos-contracts/package.json packages/carbopuntos-contracts/
+COPY packages/carbopuntos-client/package.json packages/carbopuntos-client/
 COPY apps/api/package.json apps/api/
 RUN pnpm install --frozen-lockfile --filter @app/api...
 
 COPY packages/tsconfig packages/tsconfig
 COPY packages/contracts packages/contracts
+COPY packages/carbopuntos-contracts packages/carbopuntos-contracts
+COPY packages/carbopuntos-client packages/carbopuntos-client
 COPY apps/api apps/api
-RUN pnpm --filter @app/contracts build && pnpm --filter @app/api build
+# apps/api importa @app/carbopuntos-client (que depende de @app/carbopuntos-contracts):
+# hay que compilar sus dist antes del build de la api o nest no resuelve los módulos.
+RUN pnpm --filter @app/contracts build \
+  && pnpm --filter @app/carbopuntos-contracts build \
+  && pnpm --filter @app/carbopuntos-client build \
+  && pnpm --filter @app/api build
 
 # ── Stage 2: runtime ──────────────────────────────────────────────
 FROM base AS runtime
@@ -29,10 +38,14 @@ ENV NODE_ENV=production
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/tsconfig/package.json packages/tsconfig/
 COPY packages/contracts/package.json packages/contracts/
+COPY packages/carbopuntos-contracts/package.json packages/carbopuntos-contracts/
+COPY packages/carbopuntos-client/package.json packages/carbopuntos-client/
 COPY apps/api/package.json apps/api/
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts --filter @app/api...
 
 COPY --from=build /repo/packages/contracts/dist packages/contracts/dist
+COPY --from=build /repo/packages/carbopuntos-contracts/dist packages/carbopuntos-contracts/dist
+COPY --from=build /repo/packages/carbopuntos-client/dist packages/carbopuntos-client/dist
 COPY --from=build /repo/apps/api/dist apps/api/dist
 COPY apps/api/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
