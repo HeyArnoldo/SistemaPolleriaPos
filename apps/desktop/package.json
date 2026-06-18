@@ -24,13 +24,16 @@
   "build": {
     "appId": "com.groow.polleriapos",
     "productName": "Pollería POS",
+    "artifactName": "PolleriaPOS-Setup-${version}.${ext}",
     "files": [
       "dist-electron/**"
     ],
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build-resources"
     },
     "win": {
+      "icon": "build-resources/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -42,7 +45,12 @@
     },
     "nsis": {
       "oneClick": true,
-      "perMachine": false
+      "perMachine": false,
+      "installerIcon": "build-resources/icon.ico",
+      "uninstallerIcon": "build-resources/icon.ico",
+      "installerHeaderIcon": "build-resources/icon.ico",
+      "createDesktopShortcut": true,
+      "shortcutName": "Pollería POS"
     },
     "publish": {
       "provider": "github",

@@ -107,12 +107,18 @@ const SETUP_HTML = `<!DOCTYPE html>
 
 let mainWindow: BrowserWindow | null = null;
 
+// Window/taskbar icon shipped next to main.js by copy-web.mjs. The Windows exe
+// icon is embedded by electron-builder; this covers the window chrome and dev.
+const ICON_PATH = join(__dirname, 'icon.png');
+const windowIcon = existsSync(ICON_PATH) ? ICON_PATH : undefined;
+
 function createSetupWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 520,
     height: 360,
     resizable: false,
     title: 'Configuración de sucursal — Pollería POS',
+    ...(windowIcon ? { icon: windowIcon } : {}),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -131,6 +137,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 1024,
     minHeight: 600,
     title: 'Pollería POS',
+    ...(windowIcon ? { icon: windowIcon } : {}),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
