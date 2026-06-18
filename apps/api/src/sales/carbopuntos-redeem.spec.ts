@@ -13,6 +13,9 @@
  * 7. Cart-only canje (empty items + redemptions) → allowed when customer + redemptions present.
  * 8. Cart-only sale with no items and no redemptions → rejected (existing behavior).
  * 9. Idempotency key is included in operation/redeem calls.
+ * 10. Hub rejects WITH redemptions → sale is NOT persisted (no local transaction). (D1/C1/C3)
+ * 11. Hub OK WITH redemptions → operation/redeem is called BEFORE the local persist.
+ * 12. Local persist fails AFTER a successful debit → compensating client.reverse is issued and the error re-thrown.
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -83,6 +86,29 @@ function makeManagerTransaction(
   return manager;
 }
 
+/**
+ * Builds the repo-level manager mock used by the canje path, which resolves
+ * product puntaje BEFORE persisting (hub-first ordering). Exposes both the
+ * transaction runner and a top-level findOne for that pre-persist lookup.
+ */
+function makeRepoManager(
+  savedSale: Sale,
+  product: Product | null,
+  paymentMethod: PaymentMethod | null,
+) {
+  return {
+    transaction: jest.fn(async (fn: (m: any) => Promise<any>) =>
+      fn(makeManagerTransaction(savedSale, product, paymentMethod)),
+    ),
+    findOne: jest.fn((Entity: any, _opts: any) => {
+      if (Entity === Product) return Promise.resolve(product);
+      if (Entity === PaymentMethod) return Promise.resolve(paymentMethod);
+      if (Entity === Sale) return Promise.resolve(savedSale);
+      return Promise.resolve(null);
+    }),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -91,7 +117,10 @@ describe('SalesService.createSale — redemptions (carbopuntos)', () => {
   let service: SalesService;
   let mockClient: Record<string, jest.Mock>;
   let mockPendingService: { enqueue: jest.Mock };
-  let mockSaleRepo: { findOne: jest.Mock; manager: { transaction: jest.Mock } };
+  let mockSaleRepo: {
+    findOne: jest.Mock;
+    manager: { transaction: jest.Mock; findOne: jest.Mock };
+  };
 
   const product = makeProduct(1, 5); // puntaje=5
   const paymentMethod = makePaymentMethod();
@@ -105,13 +134,9 @@ describe('SalesService.createSale — redemptions (carbopuntos)', () => {
     };
     mockPendingService = { enqueue: jest.fn() };
 
-    const manager = makeManagerTransaction(savedSale, product, paymentMethod);
-
     mockSaleRepo = {
       findOne: jest.fn().mockResolvedValue(null),
-      manager: {
-        transaction: jest.fn(async (fn: (m: any) => Promise<any>) => fn(manager)),
-      },
+      manager: makeRepoManager(savedSale, product, paymentMethod),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -179,12 +204,9 @@ describe('SalesService.createSale — redemptions (carbopuntos)', () => {
       };
       mockPendingService = { enqueue: jest.fn() };
 
-      const manager = makeManagerTransaction(savedSale, zeroPuntajeProduct, paymentMethod);
       mockSaleRepo = {
         findOne: jest.fn().mockResolvedValue(null),
-        manager: {
-          transaction: jest.fn(async (fn: (m: any) => Promise<any>) => fn(manager)),
-        },
+        manager: makeRepoManager(savedSale, zeroPuntajeProduct, paymentMethod),
       };
 
       const module: TestingModule = await Test.createTestingModule({
@@ -370,12 +392,9 @@ describe('SalesService.createSale — redemptions (carbopuntos)', () => {
       };
       mockPendingService = { enqueue: jest.fn() };
 
-      const manager = makeManagerTransaction(savedSale, null, null);
       mockSaleRepo = {
         findOne: jest.fn().mockResolvedValue(null),
-        manager: {
-          transaction: jest.fn(async (fn: (m: any) => Promise<any>) => fn(manager)),
-        },
+        manager: makeRepoManager(savedSale, null, null),
       };
 
       const module: TestingModule = await Test.createTestingModule({
@@ -476,12 +495,9 @@ describe('SalesService.createSale — redemptions (carbopuntos)', () => {
       };
       mockPendingService = { enqueue: jest.fn() };
 
-      const manager = makeManagerTransaction(savedSale, zeroPuntajeProduct, paymentMethod);
       mockSaleRepo = {
         findOne: jest.fn().mockResolvedValue(null),
-        manager: {
-          transaction: jest.fn(async (fn: (m: any) => Promise<any>) => fn(manager)),
-        },
+        manager: makeRepoManager(savedSale, zeroPuntajeProduct, paymentMethod),
       };
 
       const module: TestingModule = await Test.createTestingModule({
@@ -510,6 +526,139 @@ describe('SalesService.createSale — redemptions (carbopuntos)', () => {
       expect(mockClient.redeem).toHaveBeenCalledWith(
         expect.objectContaining({
           idempotencyKey: 'SEDE-01:SALE-010:redeem',
+        }),
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Test 10: hub rejects WITH redemptions → sale is NOT persisted (D1/C1/C3)
+  // -----------------------------------------------------------------------
+
+  describe('T10 — hub rejects + redemptions → sale NOT persisted', () => {
+    it('does not open the local transaction when the hub rejects the canje', async () => {
+      const savedSale = makeSale(60, 'SALE-011', '12345678');
+      await setupModule(savedSale);
+
+      mockClient.operation.mockRejectedValue(
+        new CarbopuntosApiError('Saldo insuficiente', 409, { error: 'insufficient_balance' }),
+      );
+
+      await expect(
+        service.createSale(
+          {
+            saleNumber: 'SALE-011',
+            customerDni: '12345678',
+            items: [{ productId: 1, quantity: 2, unitPrice: 10 }],
+            payments: [{ paymentMethodId: 1, amount: 20 }],
+            redemptions: [{ description: 'Premio', costPoints: 9999 }],
+          },
+          makeUser(),
+        ),
+      ).rejects.toThrow();
+
+      // The canje requires the hub FIRST: if it fails, the sale must never reach DB.
+      expect(mockSaleRepo.manager.transaction).not.toHaveBeenCalled();
+      expect(mockPendingService.enqueue).not.toHaveBeenCalled();
+      // No compensation needed: nothing was debited successfully and nothing was saved.
+      expect(mockClient.reverse).not.toHaveBeenCalled();
+    });
+
+    it('does not open the local transaction when the hub is unavailable', async () => {
+      const savedSale = makeSale(61, 'SALE-012', '12345678');
+      await setupModule(savedSale);
+
+      mockClient.operation.mockRejectedValue(
+        new CarbopuntosUnavailableError('Hub no disponible', new Error('ECONNREFUSED')),
+      );
+
+      await expect(
+        service.createSale(
+          {
+            saleNumber: 'SALE-012',
+            customerDni: '12345678',
+            items: [{ productId: 1, quantity: 2, unitPrice: 10 }],
+            payments: [{ paymentMethodId: 1, amount: 20 }],
+            redemptions: [{ description: 'Premio', costPoints: 50 }],
+          },
+          makeUser(),
+        ),
+      ).rejects.toThrow();
+
+      expect(mockSaleRepo.manager.transaction).not.toHaveBeenCalled();
+      expect(mockPendingService.enqueue).not.toHaveBeenCalled();
+      expect(mockClient.reverse).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Test 11: hub OK WITH redemptions → debit happens BEFORE the local persist
+  // -----------------------------------------------------------------------
+
+  describe('T11 — hub OK + redemptions → debit BEFORE persist', () => {
+    it('calls client.operation before opening the local transaction', async () => {
+      const savedSale = makeSale(62, 'SALE-013', '12345678');
+      await setupModule(savedSale);
+
+      const order: string[] = [];
+      mockClient.operation.mockImplementation(async () => {
+        order.push('operation');
+        return [{ id: 'mov-op' }];
+      });
+      mockSaleRepo.manager.transaction.mockImplementation(async (fn: (m: any) => Promise<any>) => {
+        order.push('transaction');
+        const manager = makeManagerTransaction(savedSale, product, paymentMethod);
+        return fn(manager);
+      });
+
+      await service.createSale(
+        {
+          saleNumber: 'SALE-013',
+          customerDni: '12345678',
+          items: [{ productId: 1, quantity: 2, unitPrice: 10 }],
+          payments: [{ paymentMethodId: 1, amount: 20 }],
+          redemptions: [{ description: 'Premio', costPoints: 50 }],
+        },
+        makeUser(),
+      );
+
+      expect(order).toEqual(['operation', 'transaction']);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Test 12: local persist fails AFTER successful debit → compensating reverse
+  // -----------------------------------------------------------------------
+
+  describe('T12 — persist fails after debit → compensating reverse', () => {
+    it('issues client.reverse and re-throws when the local persist fails post-debit', async () => {
+      const savedSale = makeSale(63, 'SALE-014', '12345678');
+      await setupModule(savedSale);
+
+      mockClient.operation.mockResolvedValue([{ id: 'mov-op' }]);
+      mockClient.reverse.mockResolvedValue({ id: 'mov-reverse' });
+
+      // The hub debit succeeded, but the local DB write blows up afterwards.
+      mockSaleRepo.manager.transaction.mockRejectedValue(new Error('DB connection lost'));
+
+      await expect(
+        service.createSale(
+          {
+            saleNumber: 'SALE-014',
+            customerDni: '12345678',
+            items: [{ productId: 1, quantity: 2, unitPrice: 10 }],
+            payments: [{ paymentMethodId: 1, amount: 20 }],
+            redemptions: [{ description: 'Premio', costPoints: 50 }],
+          },
+          makeUser(),
+        ),
+      ).rejects.toThrow('DB connection lost');
+
+      // Best-effort compensation with the SAME idempotency key family for the sale.
+      expect(mockClient.reverse).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customerDni: '12345678',
+          saleRef: 'SALE-014',
         }),
       );
     });
