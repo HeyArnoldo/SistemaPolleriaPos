@@ -5,6 +5,7 @@ import { CarbopuntosClient } from '@app/carbopuntos-client';
 import { CarbopuntosPendingMovement } from './entities/pending-movement.entity';
 import { CarbopuntosPendingService } from './pending-queue.service';
 import { CarbopuntosSyncController } from './carbopuntos-sync.controller';
+import { CarbopuntosProxyController } from './carbopuntos-proxy.controller';
 import { CARBOPUNTOS_CLIENT_TOKEN, CARBOPUNTOS_PENDING_TOKEN } from './carbopuntos.tokens';
 
 export { CARBOPUNTOS_CLIENT_TOKEN, CARBOPUNTOS_PENDING_TOKEN } from './carbopuntos.tokens';
@@ -29,7 +30,7 @@ export { CARBOPUNTOS_CLIENT_TOKEN, CARBOPUNTOS_PENDING_TOKEN } from './carbopunt
       useExisting: CarbopuntosPendingService,
     },
   ],
-  controllers: [CarbopuntosSyncController],
+  controllers: [CarbopuntosSyncController, CarbopuntosProxyController],
   exports: [CARBOPUNTOS_CLIENT_TOKEN, CARBOPUNTOS_PENDING_TOKEN, CarbopuntosPendingService],
 })
 export class CarbopuntosModule {}

@@ -57,6 +57,17 @@ export const envSchema = z
         message: 'STORE_ID es obligatorio cuando CARBOPUNTOS_HUB_URL está configurado (D15)',
       });
     }
+    // Sin SERVICE_KEY el módulo inyecta el cliente del hub como null, pero el
+    // CarbopuntosProxyController lo usa como NO-opcional → 500 ante misconfig.
+    // Lo exigimos al boot para fallar temprano en vez de en runtime.
+    if (env.CARBOPUNTOS_HUB_URL && !env.CARBOPUNTOS_SERVICE_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['CARBOPUNTOS_SERVICE_KEY'],
+        message:
+          'CARBOPUNTOS_SERVICE_KEY es obligatorio cuando CARBOPUNTOS_HUB_URL está configurado',
+      });
+    }
   });
 
 export type Env = z.infer<typeof envSchema>;

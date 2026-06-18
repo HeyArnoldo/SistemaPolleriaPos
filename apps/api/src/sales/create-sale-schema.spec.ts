@@ -34,3 +34,40 @@ describe('createSaleSchema decimal coercion', () => {
     ).toThrow();
   });
 });
+
+/**
+ * Regression guard (WU-6a): permitir "solo canje" relajó el requisito de pagos.
+ * Una venta CON productos debe seguir exigiendo al menos un pago — sin él se
+ * persistiría como `paid` con cero pagos. El "solo canje" (items vacíos +
+ * redemptions + customerDni) sí puede ir sin pagos.
+ */
+describe('createSaleSchema payments requirement for product sales', () => {
+  it('rejects a sale WITH items and empty payments', () => {
+    const result = createSaleSchema.safeParse({
+      items: [{ productId: 1, quantity: 1, unitPrice: 10 }],
+      payments: [],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path[0] === 'payments')).toBe(true);
+    }
+  });
+
+  it('accepts a sale WITH items and at least one payment', () => {
+    const result = createSaleSchema.safeParse({
+      items: [{ productId: 1, quantity: 1, unitPrice: 10 }],
+      payments: [{ paymentMethodId: 1, amount: 10 }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a solo-canje (empty items + redemptions + customerDni) with empty payments', () => {
+    const result = createSaleSchema.safeParse({
+      items: [],
+      payments: [],
+      customerDni: '12345678',
+      redemptions: [{ description: 'Bebida gratis', costPoints: 20 }],
+    });
+    expect(result.success).toBe(true);
+  });
+});
