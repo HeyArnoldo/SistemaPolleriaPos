@@ -206,11 +206,13 @@ export function PaymentForm({
                 <SelectValue placeholder="Selecciona metodo" />
               </SelectTrigger>
               <SelectContent>
-                {paymentMethods.map((method) => (
-                  <SelectItem key={method.id} value={String(method.id)}>
-                    {method.name}
-                  </SelectItem>
-                ))}
+                {paymentMethods
+                  .filter((method) => method.isActive)
+                  .map((method) => (
+                    <SelectItem key={method.id} value={String(method.id)}>
+                      {method.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

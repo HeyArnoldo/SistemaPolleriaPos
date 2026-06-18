@@ -1,9 +1,20 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '../common/enums/role.enum';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
   createUserSchema,
@@ -51,7 +62,11 @@ export class UsersController {
   async updateUser(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(updateUserSchema)) dto: UpdateUserInput,
+    @CurrentUser() current: User,
   ) {
+    if (dto.isActive === false && id === current.id) {
+      throw new BadRequestException('No puedes desactivar tu propia cuenta');
+    }
     const rounds = parseInt(process.env.BCRYPT_ROUNDS ?? '10', 10);
     let passwordHash: string | undefined;
     if (dto.password !== undefined) {

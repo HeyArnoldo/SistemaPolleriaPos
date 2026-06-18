@@ -69,6 +69,10 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
   }, [open, product, reset]);
 
   const onSubmit = (values: ProductFormValues) => {
+    if (!values.categoryId) {
+      toast.error('La categoria es requerida');
+      return;
+    }
     const payload = {
       name: values.name.trim(),
       price: parseFloat(values.price),
@@ -124,11 +128,11 @@ export function ProductFormDialog({ open, onOpenChange, product }: ProductFormDi
             <Input
               id="price"
               type="number"
-              min="0"
+              min="0.01"
               step="0.01"
               {...register('price', {
                 required: 'El precio es requerido',
-                min: { value: 0, message: 'El precio debe ser mayor a 0' },
+                min: { value: 0.01, message: 'El precio debe ser mayor a 0' },
               })}
               placeholder="0.00"
             />

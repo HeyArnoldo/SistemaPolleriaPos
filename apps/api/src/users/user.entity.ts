@@ -1,5 +1,4 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
@@ -8,7 +7,6 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import * as bcrypt from 'bcryptjs';
 import { Role } from '../common/enums/role.enum';
 import { Profile } from './profile.entity';
 
@@ -38,10 +36,4 @@ export class User {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
-
-  @BeforeInsert()
-  async hashPassword(): Promise<void> {
-    const rounds = parseInt(process.env.SALT_ROUNDS ?? process.env.BCRYPT_ROUNDS ?? '10', 10);
-    this.passwordHash = await bcrypt.hash(this.passwordHash, rounds);
-  }
 }

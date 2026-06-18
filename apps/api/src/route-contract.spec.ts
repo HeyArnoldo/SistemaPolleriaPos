@@ -112,6 +112,7 @@ describe('API route contract', () => {
         CashController,
         [
           'GET /cash/expenses',
+          'POST /cash/expenses/sync',
           'POST /cash/expenses',
           'GET /cash/dashboard',
           'DELETE /cash/expenses/:id',
@@ -121,7 +122,7 @@ describe('API route contract', () => {
         BIController,
         ['GET /bi/summary', 'GET /bi/detail', 'GET /bi/commissions', 'GET /bi/trends'],
       ],
-      [SettingsController, ['GET /settings']],
+      [SettingsController, ['GET /settings', 'PATCH /settings']],
       [UsersController, ['GET /users', 'POST /users', 'PATCH /users/:id']],
       [HealthController, ['GET /health']],
     ];
