@@ -11,7 +11,7 @@ import { WifiOff } from 'lucide-react';
 
 export function ProtectedRoute() {
   const { data: user, isLoading } = useMe();
-  const { isOnline } = useConnectivity();
+  const { isOnline, hasCheckedHealth } = useConnectivity();
   const { isOfflineMode, enterOfflineMode } = useOfflineAuth();
   const [offlineSession, setOfflineSession] = useState<StoredOfflineSession | null | undefined>(
     undefined,
@@ -36,6 +36,21 @@ export function ProtectedRoute() {
   }
 
   if (user) return <Outlet />;
+
+  // Logged-out: wait for the real health check before deciding login-vs-PIN,
+  // so an offline user with a valid PIN isn't bounced to /login on the
+  // optimistic navigator.onLine value.
+  if (!hasCheckedHealth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="w-full max-w-md space-y-3 p-6">
+          <Skeleton className="h-8 w-2/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+        </div>
+      </div>
+    );
+  }
 
   if (isOnline) return <Navigate to="/login" replace />;
 

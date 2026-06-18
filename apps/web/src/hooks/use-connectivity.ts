@@ -10,7 +10,13 @@ interface UseConnectivityOptions {
 
 export function useConnectivity({ onReconnect }: UseConnectivityOptions = {}) {
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  // false until the first health check resolves — guards code that must not act
+  // on the optimistic navigator.onLine value (e.g. redirecting to /login while
+  // a PIN-offline user is actually on an unreachable network).
+  const [hasCheckedHealth, setHasCheckedHealth] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Only true after a CONFIRMED offline state (failed health check / offline
+  // event), so onReconnect never fires spuriously on first mount.
   const wasOfflineRef = useRef(false);
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
@@ -23,16 +29,16 @@ export function useConnectivity({ onReconnect }: UseConnectivityOptions = {}) {
         timeout: REQUEST_TIMEOUT_MS,
         baseURL: import.meta.env.VITE_API_URL ?? '',
       });
-      setIsOnline((prev) => {
-        if (!prev || wasOfflineRef.current) {
-          wasOfflineRef.current = false;
-          onReconnectRef.current?.();
-        }
-        return true;
-      });
+      if (wasOfflineRef.current) {
+        wasOfflineRef.current = false;
+        onReconnectRef.current?.();
+      }
+      setIsOnline(true);
     } catch {
       wasOfflineRef.current = true;
       setIsOnline(false);
+    } finally {
+      setHasCheckedHealth(true);
     }
   }, []);
 
@@ -65,5 +71,5 @@ export function useConnectivity({ onReconnect }: UseConnectivityOptions = {}) {
     };
   }, [checkHealth]);
 
-  return { isOnline };
+  return { isOnline, hasCheckedHealth };
 }
