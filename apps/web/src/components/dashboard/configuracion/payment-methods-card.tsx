@@ -105,7 +105,7 @@ export function PaymentMethodsCard() {
   };
 
   return (
-    <Card>
+    <Card className="border-slate-200/70 shadow-sm">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">Metodos de pago</CardTitle>
