@@ -21,8 +21,8 @@ import {
 } from '../../carbopuntos/carbopuntos.tokens';
 import { CarbopuntosPendingService } from '../../carbopuntos/pending-queue.service';
 import type { CarbopuntosClient } from '@app/carbopuntos-client';
-import { CarbopuntosUnavailableError } from '@app/carbopuntos-client';
 import { ConfigService } from '@nestjs/config';
+import { isRetryableHubError } from '../../carbopuntos/retryable-hub-error';
 
 export interface SalesFilter {
   from?: string;
@@ -190,12 +190,12 @@ export class SalesService {
       });
     } catch (err: unknown) {
       // The sale is NEVER blocked regardless of error type (D1/RNF-04).
-      // Only enqueue transient failures (hub down / network / timeout). A
-      // CarbopuntosApiError (4xx business/validation) is permanent: retrying
-      // won't fix it, so we just log it instead of polluting the queue (D16).
-      if (err instanceof CarbopuntosUnavailableError) {
+      // Only enqueue transient failures (hub down / network / 5xx). A 4xx
+      // business/validation error is permanent: retrying won't fix it, so we
+      // just log it instead of polluting the queue (D16).
+      if (isRetryableHubError(err)) {
         this.logger.warn(
-          `Hub unavailable accruing points for sale ${sale.saleNumber}: ${err.message}. Enqueuing for retry.`,
+          `Transient hub failure accruing points for sale ${sale.saleNumber}: ${String(err)}. Enqueuing for retry.`,
         );
         await this.pendingService?.enqueue({
           operation: 'accrue',
@@ -322,10 +322,11 @@ export class SalesService {
       });
     } catch (err: unknown) {
       // Cancellation is already saved; never throw (D5/C5). Only enqueue
-      // transient failures. A CarbopuntosApiError (4xx) is permanent — log it.
-      if (err instanceof CarbopuntosUnavailableError) {
+      // transient failures (hub down / network / 5xx). A 4xx error is
+      // permanent — log it.
+      if (isRetryableHubError(err)) {
         this.logger.warn(
-          `Hub unavailable reversing points for sale ${sale.saleNumber}: ${err.message}. Enqueuing for retry.`,
+          `Transient hub failure reversing points for sale ${sale.saleNumber}: ${String(err)}. Enqueuing for retry.`,
         );
         await this.pendingService?.enqueue({
           operation: 'reverse',

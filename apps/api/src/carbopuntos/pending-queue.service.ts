@@ -4,7 +4,7 @@ import { In, IsNull, LessThanOrEqual, Or, Repository } from 'typeorm';
 import { CarbopuntosPendingMovement } from './entities/pending-movement.entity';
 import { CARBOPUNTOS_CLIENT_TOKEN } from './carbopuntos.tokens';
 import type { CarbopuntosClient } from '@app/carbopuntos-client';
-import { CarbopuntosUnavailableError } from '@app/carbopuntos-client';
+import { isRetryableHubError } from './retryable-hub-error';
 
 /** Maximum retry attempts before marking the record as failed. */
 const MAX_ATTEMPTS = 5;
@@ -127,9 +127,10 @@ export class CarbopuntosPendingService {
       movement.nextRetryAt = null;
       await this.pendingRepo.save(movement);
     } catch (err: unknown) {
-      // Permanent (business/validation) errors will never succeed on retry:
-      // mark failed immediately WITHOUT consuming a retry attempt.
-      if (!(err instanceof CarbopuntosUnavailableError)) {
+      // Permanent (4xx business/validation) errors will never succeed on retry:
+      // mark failed immediately WITHOUT consuming a retry attempt. Transient
+      // failures (hub down / network / 5xx) are reschedulable.
+      if (!isRetryableHubError(err)) {
         movement.status = 'failed';
         movement.lastError = String(err instanceof Error ? err.message : err);
         movement.nextRetryAt = null;
@@ -155,7 +156,7 @@ export class CarbopuntosPendingService {
       }
 
       movement.attemptCount = newAttemptCount;
-      movement.lastError = err.message;
+      movement.lastError = String(err instanceof Error ? err.message : err);
       await this.pendingRepo.save(movement);
     }
   }

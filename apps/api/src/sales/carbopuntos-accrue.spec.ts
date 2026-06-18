@@ -228,6 +228,34 @@ describe('SalesService.createSale — carbopuntos integration', () => {
     expect(mockPendingService.enqueue).not.toHaveBeenCalled();
   });
 
+  it('enqueues when hub responds with a transient (5xx) error', async () => {
+    // A CarbopuntosApiError with status >= 500 (502/503/500) is transient:
+    // retrying may succeed later, so it MUST be enqueued — not silently dropped.
+    mockClient.accrue.mockRejectedValue(
+      new CarbopuntosApiError('Bad gateway', 503, { error: 'unavailable' }),
+    );
+    mockPendingService.enqueue.mockResolvedValue(undefined);
+
+    await expect(
+      service.createSale(
+        {
+          saleNumber: 'SALE-001',
+          customerDni: '12345678',
+          items: [{ productId: 1, quantity: 2, unitPrice: 10 }],
+          payments: [{ paymentMethodId: 1, amount: 20 }],
+        },
+        makeUser(),
+      ),
+    ).resolves.not.toThrow();
+
+    expect(mockPendingService.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'accrue',
+        customerDni: '12345678',
+      }),
+    );
+  });
+
   it('builds the idempotencyKey including the STORE_ID (sede)', async () => {
     mockClient.accrue.mockResolvedValue({ id: 'mov-1' });
 

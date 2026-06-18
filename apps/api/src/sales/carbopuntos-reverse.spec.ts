@@ -115,6 +115,23 @@ describe('SalesService.cancelSale — carbopuntos integration', () => {
     expect(mockPendingService.enqueue).not.toHaveBeenCalled();
   });
 
+  it('enqueues when hub responds with a transient (5xx) error on reverse', async () => {
+    mockClient.reverse.mockRejectedValue(
+      new CarbopuntosApiError('Service unavailable', 502, { error: 'unavailable' }),
+    );
+    mockPendingService.enqueue.mockResolvedValue(undefined);
+
+    await expect(service.cancelSale(10, 'Cancelado', makeUser())).resolves.not.toThrow();
+
+    expect(mockPendingService.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'reverse',
+        customerDni: '12345678',
+        saleRef: 'SALE-010',
+      }),
+    );
+  });
+
   it('builds the reverse idempotencyKey including the STORE_ID (sede)', async () => {
     mockClient.reverse.mockResolvedValue({ id: 'mov-rev-1' });
 

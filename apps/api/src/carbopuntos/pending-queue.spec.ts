@@ -136,6 +136,24 @@ describe('CarbopuntosPendingService', () => {
       );
     });
 
+    it('retries a transient (5xx) error with backoff instead of marking failed', async () => {
+      // A CarbopuntosApiError with status >= 500 is transient: it must be
+      // retried (status=retrying, attemptCount incremented), NOT marked failed.
+      const pending = makePending({ status: 'pending', attemptCount: 0 });
+      mockRepo.find.mockResolvedValue([pending]);
+      mockClient.accrue.mockRejectedValue(
+        new CarbopuntosApiError('Bad gateway', 503, { error: 'unavailable' }),
+      );
+      mockRepo.save.mockImplementation((m: CarbopuntosPendingMovement) => Promise.resolve(m));
+
+      await service.retryPending();
+
+      const saved = mockRepo.save.mock.calls[0][0] as CarbopuntosPendingMovement;
+      expect(saved.status).toBe('retrying');
+      expect(saved.attemptCount).toBe(1);
+      expect(saved.nextRetryAt).toBeInstanceOf(Date);
+    });
+
     it('schedules nextRetryAt in the future on a transient (unavailable) failure', async () => {
       const pending = makePending({ status: 'pending', attemptCount: 0 });
       mockRepo.find.mockResolvedValue([pending]);
