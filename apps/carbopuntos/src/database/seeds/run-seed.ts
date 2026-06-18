@@ -1,4 +1,4 @@
-import '../../../config/load-env';
+import '../../config/load-env';
 import * as bcrypt from 'bcryptjs';
 import dataSource from '../../config/typeorm.config';
 import { SedeCredential } from '../../auth/entities/sede-credential.entity';
