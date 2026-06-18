@@ -19,13 +19,7 @@ export interface SalesFilter {
 
 @Injectable()
 export class SalesService {
-  constructor(
-    @InjectRepository(Sale) private readonly saleRepo: Repository<Sale>,
-    @InjectRepository(SaleItem) private readonly itemRepo: Repository<SaleItem>,
-    @InjectRepository(Payment) private readonly paymentRepo: Repository<Payment>,
-    @InjectRepository(PaymentMethod) private readonly pmRepo: Repository<PaymentMethod>,
-    @InjectRepository(Product) private readonly productRepo: Repository<Product>,
-  ) {}
+  constructor(@InjectRepository(Sale) private readonly saleRepo: Repository<Sale>) {}
 
   async createSale(dto: CreateSaleDto, user: User): Promise<Sale> {
     if (dto.saleNumber) {
@@ -42,58 +36,69 @@ export class SalesService {
       dto.saleNumber ??
       `SALE-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
-    const sale = this.saleRepo.create({
-      saleNumber,
-      user,
-      subtotal,
-      taxAmount: 0,
-      totalAmount,
-      paymentStatus: 'paid',
-      notes: dto.notes ?? null,
-      isCanceled: false,
-      ...(dto.createdAt ? { createdAt: dto.createdAt } : {}),
+    // Persist the sale and its children in one transaction, setting the
+    // sale_id FK explicitly on each item/payment (do not rely on cascade —
+    // a misconfigured cascade inserts children with a null sale_id).
+    return this.saleRepo.manager.transaction(async (manager) => {
+      const sale = await manager.save(
+        manager.create(Sale, {
+          saleNumber,
+          user,
+          subtotal,
+          taxAmount: 0,
+          totalAmount,
+          paymentStatus: 'paid',
+          notes: dto.notes ?? null,
+          isCanceled: false,
+          ...(dto.createdAt ? { createdAt: dto.createdAt } : {}),
+        }),
+      );
+
+      for (const itemDto of dto.items) {
+        const product = await manager.findOne(Product, { where: { id: itemDto.productId } });
+        if (!product) throw new NotFoundException(`Product ${itemDto.productId} not found`);
+        await manager.save(
+          manager.create(SaleItem, {
+            sale,
+            product,
+            quantity: itemDto.quantity,
+            unitPrice: itemDto.unitPrice,
+            subtotal: itemDto.quantity * itemDto.unitPrice,
+          }),
+        );
+      }
+
+      for (const payDto of dto.payments) {
+        const pm = await manager.findOne(PaymentMethod, {
+          where: { id: payDto.paymentMethodId },
+        });
+        if (!pm) throw new NotFoundException(`PaymentMethod ${payDto.paymentMethodId} not found`);
+
+        const commissionPct = Number(pm.commissionPercentage);
+        const gross = payDto.amount;
+        const commissionAmount = gross * (commissionPct / 100);
+        const net = gross - commissionAmount;
+
+        await manager.save(
+          manager.create(Payment, {
+            sale,
+            paymentMethod: pm,
+            amount: payDto.amount,
+            grossAmount: gross,
+            netAmount: net,
+            commissionPercentage: commissionPct,
+            commissionAmount,
+            transferTime: payDto.transferTime ?? null,
+          }),
+        );
+      }
+
+      const full = await manager.findOne(Sale, {
+        where: { id: sale.id },
+        relations: ['user', 'items', 'items.product', 'payments', 'payments.paymentMethod'],
+      });
+      return full ?? sale;
     });
-
-    // Build items
-    const items: SaleItem[] = [];
-    for (const itemDto of dto.items) {
-      const product = await this.productRepo.findOne({ where: { id: itemDto.productId } });
-      if (!product) throw new NotFoundException(`Product ${itemDto.productId} not found`);
-      const item = this.itemRepo.create({
-        product,
-        quantity: itemDto.quantity,
-        unitPrice: itemDto.unitPrice,
-        subtotal: itemDto.quantity * itemDto.unitPrice,
-      });
-      items.push(item);
-    }
-    sale.items = items;
-
-    // Build payments
-    const payments: Payment[] = [];
-    for (const payDto of dto.payments) {
-      const pm = await this.pmRepo.findOne({ where: { id: payDto.paymentMethodId } });
-      if (!pm) throw new NotFoundException(`PaymentMethod ${payDto.paymentMethodId} not found`);
-
-      const commissionPct = Number(pm.commissionPercentage);
-      const gross = payDto.amount;
-      const commissionAmount = gross * (commissionPct / 100);
-      const net = gross - commissionAmount;
-
-      const payment = this.paymentRepo.create({
-        paymentMethod: pm,
-        amount: payDto.amount,
-        grossAmount: gross,
-        netAmount: net,
-        commissionPercentage: commissionPct,
-        commissionAmount,
-        transferTime: payDto.transferTime ?? null,
-      });
-      payments.push(payment);
-    }
-    sale.payments = payments;
-
-    return this.saleRepo.save(sale);
   }
 
   async syncSales(input: SyncSalesDto, user: User): Promise<{ created: number; skipped: number }> {
