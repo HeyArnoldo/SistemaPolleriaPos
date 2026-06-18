@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ServiceKeyGuard } from '../auth/guards/service-key.guard';
 import { CurrentSede } from '../auth/decorators/current-sede.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -62,11 +71,17 @@ export class CustomersController {
   @Get(':dni/balance')
   async getBalance(@Param('dni') dni: string, @CurrentSede() _sede: string) {
     const { customer, balance } = await this.customersService.findByDni(dni);
+    // Un cliente afiliado SIEMPRE tiene un registro de saldo (se crea en la
+    // afiliación). Si falta, es un estado incoherente: lo tratamos como error
+    // explícito en vez de emitir updatedAt:null (que rompe balanceSchema).
+    if (!balance) {
+      throw new NotFoundException(`Saldo no encontrado para el cliente con DNI ${dni}`);
+    }
     return {
       customerId: customer.id,
-      balance: balance?.balance ?? 0,
-      version: balance?.version ?? 0,
-      updatedAt: balance?.updatedAt ?? null,
+      balance: balance.balance,
+      version: balance.version,
+      updatedAt: balance.updatedAt,
     };
   }
 
