@@ -26,6 +26,9 @@ export class Product {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  @Column({ type: 'int', default: 0, name: 'puntaje' })
+  puntaje: number = 0;
+
   @ManyToOne(() => ProductCategory, (category) => category.products, { nullable: false })
   @JoinColumn({ name: 'category_id' })
   category: ProductCategory;
