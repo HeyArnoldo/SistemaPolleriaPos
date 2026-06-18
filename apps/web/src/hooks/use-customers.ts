@@ -12,6 +12,11 @@ export const useSearchCustomers = (q: string, enabled = true) =>
     staleTime: 30_000,
   });
 
+/**
+ * Fetches the customer record + current point balance for a given DNI.
+ * Returns { dni, balance, customer } — customer may be null if the DNI is not found.
+ * Used by CustomerPanel to display the name and seed the balance on linking.
+ */
 export const useGetCustomer = (dni: string, enabled = true) =>
   useQuery({
     queryKey: QUERY_KEYS.customer(dni),

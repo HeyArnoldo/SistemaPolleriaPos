@@ -62,4 +62,18 @@ export class Sale {
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
+
+  /**
+   * Transient field — NOT persisted (@Column omitted).
+   * Populated by SalesService after a successful hub operation and returned
+   * in the HTTP response so the front-end can render the ticket block.
+   * Consumers that don't use this field (e.g. syncSales) simply ignore it.
+   */
+  carbopuntos?: {
+    pointsBefore?: number;
+    pointsEarned?: number;
+    pointsRedeemed?: number;
+    pointsAfter?: number;
+    pending?: boolean;
+  } | null;
 }

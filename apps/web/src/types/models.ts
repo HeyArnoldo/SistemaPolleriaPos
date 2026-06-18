@@ -108,6 +108,8 @@ export interface Sale {
     pointsEarned?: number;
     pointsRedeemed?: number;
     pointsAfter?: number;
+    /** True when the hub was unreachable and the accrual was queued for later sync. */
+    pending?: boolean;
     redemptions?: SaleRedemption[];
   } | null;
 }

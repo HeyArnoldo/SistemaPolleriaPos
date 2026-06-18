@@ -67,9 +67,9 @@ export function CustomerPanel({
   const projectedBalance = calcProjectedBalance(currentBalance, pointsToEarn, redemptionCost);
 
   const handleLink = () => {
-    if (!foundCustomer) return;
-    // The customer's balance is stored in the balance field; we trust currentBalance prop
-    onCustomerLinked(foundCustomer, currentBalance);
+    if (!foundCustomer?.customer) return;
+    // Pass the real balance from the hub response so the panel shows the correct saldo.
+    onCustomerLinked(foundCustomer.customer, foundCustomer.balance);
     setDni('');
   };
 
@@ -239,11 +239,13 @@ export function CustomerPanel({
           )}
 
           {/* Customer found → link */}
-          {!isSearching && foundCustomer && (
+          {!isSearching && foundCustomer?.customer && (
             <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 p-3">
-              <div className="font-bold text-sm text-slate-900">{foundCustomer.fullName}</div>
+              <div className="font-bold text-sm text-slate-900">
+                {foundCustomer.customer.fullName}
+              </div>
               <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">
-                Cliente registrado
+                Cliente registrado · {foundCustomer.balance} pts
               </div>
               <Button
                 className="w-full mt-3 bg-slate-900 hover:bg-slate-800 text-white"

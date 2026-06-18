@@ -313,7 +313,9 @@ interface CustomerDetailProps {
 }
 
 function CustomerDetail({ dni, onBack }: CustomerDetailProps) {
-  const { data: customer, isLoading: loadingCustomer } = useGetCustomer(dni);
+  const { data: customerData, isLoading: loadingCustomer } = useGetCustomer(dni);
+  // Unwrap the CustomerWithBalance response — we need the nested Customer object.
+  const customer = customerData?.customer ?? null;
   const { data: history = [], isLoading: loadingHistory } = useGetCustomerHistory(dni);
 
   const { mutate: adjustPoints, isPending: isAdjusting } = useAdjustPoints();

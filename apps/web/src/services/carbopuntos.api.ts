@@ -20,8 +20,14 @@ export const searchCustomers = async (q: string): Promise<Customer[]> => {
   return data;
 };
 
-export const getCustomer = async (dni: string): Promise<Customer> => {
-  const { data } = await api.get<Customer>(`/carbopuntos/customers/${dni}`);
+export interface CustomerWithBalance {
+  dni: string;
+  balance: number;
+  customer: Customer | null;
+}
+
+export const getCustomer = async (dni: string): Promise<CustomerWithBalance> => {
+  const { data } = await api.get<CustomerWithBalance>(`/carbopuntos/customers/${dni}`);
   return data;
 };
 

@@ -34,6 +34,15 @@ export interface SalesFilter {
   limit?: number;
 }
 
+/** Transient carbopuntos result attached to a Sale after a hub operation. */
+export interface CarbopuntosResult {
+  pointsBefore?: number;
+  pointsEarned?: number;
+  pointsRedeemed?: number;
+  pointsAfter?: number;
+  pending?: boolean;
+}
+
 @Injectable()
 export class SalesService {
   private readonly logger = new Logger(SalesService.name);
@@ -116,7 +125,8 @@ export class SalesService {
     const sale = await this.persistSale(dto, user, saleNumber, subtotal, totalAmount, puntajeMap);
 
     // Best-effort: enqueue on transient hub failure (existing behavior).
-    await this.tryAccrue(sale, dto.items, customerDni, user, puntajeMap);
+    const carbopuntos = await this.tryAccrue(sale, dto.items, customerDni, user, puntajeMap);
+    if (carbopuntos) sale.carbopuntos = carbopuntos;
 
     return sale;
   }
@@ -244,11 +254,20 @@ export class SalesService {
     const isRedeemOnly = totalAccrual <= 0;
 
     // Step 1: hub debit. Throws on any failure (D1) — nothing persisted yet.
-    await this.tryOperation(saleNumber, dto.items, customerDni, user, puntajeMap, dto.redemptions!);
+    const carbopuntos = await this.tryOperation(
+      saleNumber,
+      dto.items,
+      customerDni,
+      user,
+      puntajeMap,
+      dto.redemptions!,
+    );
 
     // Step 2: hub confirmed the debit — persist the local sale.
     try {
-      return await this.persistSale(dto, user, saleNumber, subtotal, totalAmount, puntajeMap);
+      const sale = await this.persistSale(dto, user, saleNumber, subtotal, totalAmount, puntajeMap);
+      if (carbopuntos) sale.carbopuntos = carbopuntos;
+      return sale;
     } catch (persistErr: unknown) {
       // The debit already happened in the hub but the local write failed. Issue a
       // best-effort compensating reverse (idempotent by the sale's STORE_ID key)
@@ -306,6 +325,11 @@ export class SalesService {
   /**
    * Tries to accrue points in the hub. If the hub is unavailable, enqueues
    * the operation for later retry (D16). Never throws — the sale is already saved.
+   *
+   * Returns a CarbopuntosResult to attach to the sale response:
+   * - Online success: pointsBefore/After from the movement, pending: false.
+   * - Enqueued (hub down): pointsEarned local calc, pending: true.
+   * - No customer or no points: null (no carbopuntos field on sale).
    */
   private async tryAccrue(
     sale: Sale,
@@ -313,26 +337,32 @@ export class SalesService {
     customerDni: string | undefined | null,
     user: User,
     puntajeMap: Map<number, number>,
-  ): Promise<void> {
-    if (!customerDni || !this.carbopuntosClient) return;
+  ): Promise<CarbopuntosResult | null> {
+    if (!customerDni || !this.carbopuntosClient) return null;
 
     // Calculate total points: Σ (product.puntaje × quantity) (D3).
     const totalPoints = items.reduce((sum, item) => {
       return sum + (puntajeMap.get(item.productId) ?? 0) * item.quantity;
     }, 0);
 
-    if (totalPoints <= 0) return; // No points to accrue
+    if (totalPoints <= 0) return null; // No points to accrue
 
     const idempotencyKey = this.buildIdempotencyKey(sale.saleNumber, 'accrual');
 
     try {
-      await this.carbopuntosClient.accrue({
+      const movement = await this.carbopuntosClient.accrue({
         customerDni,
         points: totalPoints,
         saleRef: sale.saleNumber,
         userRef: String(user.id),
         idempotencyKey,
       });
+      return {
+        pointsBefore: movement.balanceBefore,
+        pointsEarned: movement.points,
+        pointsAfter: movement.balanceAfter,
+        pending: false,
+      };
     } catch (err: unknown) {
       // The sale is NEVER blocked regardless of error type (D1/RNF-04).
       // Only enqueue transient failures (hub down / network / 5xx). A 4xx
@@ -350,10 +380,16 @@ export class SalesService {
           idempotencyKey,
           userRef: String(user.id),
         });
+        // Pending: local calc only; before/after unknown until hub confirms.
+        return {
+          pointsEarned: totalPoints,
+          pending: true,
+        };
       } else {
         this.logger.error(
           `Permanent error accruing points for sale ${sale.saleNumber}: ${String(err)}. Not enqueuing.`,
         );
+        return null;
       }
     }
   }
@@ -366,6 +402,13 @@ export class SalesService {
    * unavailable or returns any error, this method THROWS — the caller is expected
    * to propagate the error so the front-end can inform the cashier. We never
    * enqueue redemptions for silent retry (unlike plain accruals).
+   *
+   * Returns a CarbopuntosResult built from the hub movement(s):
+   * - Mixed operation: pointsBefore from accrual movement, pointsEarned from
+   *   accrual movement.points, pointsRedeemed from sum of redemption costPoints,
+   *   pointsAfter from the redemption/last movement.
+   * - Redeem-only: pointsBefore/After from the movement, pointsRedeemed from
+   *   movement.points.
    */
   private async tryOperation(
     saleNumber: string,
@@ -374,7 +417,7 @@ export class SalesService {
     user: User,
     puntajeMap: Map<number, number>,
     redemptions: RedemptionItemInput[],
-  ): Promise<void> {
+  ): Promise<CarbopuntosResult> {
     if (!this.carbopuntosClient) {
       throw new Error('Carbopuntos hub is not configured — redemptions require hub connectivity');
     }
@@ -389,7 +432,7 @@ export class SalesService {
     if (totalAcrual > 0) {
       // Mixed: accrue + redeem in one atomic transaction (F6).
       const idempotencyKey = this.buildIdempotencyKey(saleNumber, 'operation');
-      await this.carbopuntosClient.operation({
+      const movements = await this.carbopuntosClient.operation({
         customerDni,
         accrualPoints: totalAcrual,
         redemptionPoints: totalRedemptionPoints,
@@ -398,10 +441,21 @@ export class SalesService {
         detail: redeemDetail,
         idempotencyKey,
       });
+      // The hub returns [accrualMovement, redemptionMovement].
+      // pointsBefore is the balance before any movement in this operation.
+      const accrualMov = movements.find((m) => m.type === 'accrual');
+      const lastMov = movements[movements.length - 1];
+      return {
+        pointsBefore: accrualMov?.balanceBefore ?? movements[0]?.balanceBefore,
+        pointsEarned: accrualMov?.points,
+        pointsRedeemed: totalRedemptionPoints,
+        pointsAfter: lastMov?.balanceAfter,
+        pending: false,
+      };
     } else {
       // Redeem only (no accrual — e.g., all products have puntaje=0, or empty cart) (F5).
       const idempotencyKey = this.buildIdempotencyKey(saleNumber, 'redeem');
-      await this.carbopuntosClient.redeem({
+      const movement = await this.carbopuntosClient.redeem({
         customerDni,
         points: totalRedemptionPoints,
         saleRef: saleNumber,
@@ -409,6 +463,12 @@ export class SalesService {
         detail: redeemDetail,
         idempotencyKey,
       });
+      return {
+        pointsBefore: movement.balanceBefore,
+        pointsRedeemed: movement.points,
+        pointsAfter: movement.balanceAfter,
+        pending: false,
+      };
     }
   }
 

@@ -48,11 +48,21 @@ export class CarbopuntosProxyController {
     return this.client.search(query);
   }
 
-  /** GET /api/carbopuntos/customers/:dni — balance + customer reference */
+  /**
+   * GET /api/carbopuntos/customers/:dni — customer info + current balance.
+   *
+   * Returns { dni, balance } where balance is the integer point balance.
+   * Also includes customer fields (fullName etc.) by searching the hub,
+   * so the cashier panel can display the customer name without a second call.
+   */
   @Get('customers/:dni')
-  async getCustomerBalance(@Param('dni') dni: string) {
-    const balance = await this.client.getBalance(dni);
-    return { dni, balance };
+  async getCustomerByDni(@Param('dni') dni: string) {
+    const [balanceResult, customers] = await Promise.all([
+      this.client.getBalance(dni),
+      this.client.search({ q: dni }),
+    ]);
+    const customer = customers.find((c) => c.dni === dni) ?? null;
+    return { dni, balance: balanceResult.balance, customer };
   }
 
   /** GET /api/carbopuntos/customers/:dni/history — cross-sede movement history (D25) */
