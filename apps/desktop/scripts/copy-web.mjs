@@ -19,3 +19,15 @@ if (!existsSync(webDist)) {
 rmSync(target, { recursive: true, force: true });
 cpSync(webDist, target, { recursive: true });
 console.log('[copy-web] copied apps/web/dist → apps/desktop/dist-electron/web');
+
+// Ship the window/taskbar icon next to main.js so the runtime can load it via
+// __dirname. The exe icon is embedded by electron-builder (build/icon.ico); this
+// is for the BrowserWindow icon (Linux/dev + window chrome).
+const iconSrc = join(here, '..', 'build-resources', 'icon.png');
+const iconTarget = join(here, '..', 'dist-electron', 'icon.png');
+if (existsSync(iconSrc)) {
+  cpSync(iconSrc, iconTarget);
+  console.log('[copy-web] copied build-resources/icon.png → apps/desktop/dist-electron/icon.png');
+} else {
+  console.warn('[copy-web] build/icon.png not found — skipping runtime window icon.');
+}
