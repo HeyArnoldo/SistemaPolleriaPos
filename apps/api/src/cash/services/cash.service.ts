@@ -71,6 +71,29 @@ function todayInLima(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date());
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Resolve a filter bound to a Date. A date-only string (YYYY-MM-DD) expands to
+ * the START of that day in GMT-5 — otherwise a bare `new Date('2026-06-17')`
+ * is UTC midnight, which makes a same-day from/to range zero-width and hides
+ * every record of the day. Full datetimes are used as-is.
+ */
+export function resolveRangeStart(value?: string): Date | null {
+  if (!value) return null;
+  if (DATE_ONLY.test(value)) return parseLimaDayRange(value).start;
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Resolve a filter bound to a Date; a date-only string expands to END of the GMT-5 day. */
+export function resolveRangeEnd(value?: string): Date | null {
+  if (!value) return null;
+  if (DATE_ONLY.test(value)) return parseLimaDayRange(value).end;
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 @Injectable()
 export class CashService {
   constructor(
@@ -104,14 +127,11 @@ export class CashService {
   }
 
   async findAll(filter: DateRangeFilter): Promise<Expense[]> {
-    const hasFrom = filter.from && !isNaN(new Date(filter.from).getTime());
-    const hasTo = filter.to && !isNaN(new Date(filter.to).getTime());
+    const start = resolveRangeStart(filter.from);
+    const end = resolveRangeEnd(filter.to);
 
     return this.expenseRepo.find({
-      where:
-        hasFrom && hasTo
-          ? { createdAt: Between(new Date(filter.from!), new Date(filter.to!)) }
-          : {},
+      where: start && end ? { createdAt: Between(start, end) } : {},
       relations: ['paymentMethod', 'createdBy'],
       order: { createdAt: 'DESC' },
     });
