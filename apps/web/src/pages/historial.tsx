@@ -36,12 +36,12 @@ import type { BIDetailTransaction, BIGroupBy, BIPeriod, BIQueryParams } from '@/
 
 function toIsoStart(date: string): string | undefined {
   if (!date) return undefined;
-  return new Date(`${date}T00:00:00`).toISOString();
+  return new Date(`${date}T00:00:00.000-05:00`).toISOString();
 }
 
 function toIsoEnd(date: string): string | undefined {
   if (!date) return undefined;
-  return new Date(`${date}T23:59:59`).toISOString();
+  return new Date(`${date}T23:59:59.999-05:00`).toISOString();
 }
 
 // ----------------------------------------------------------------------------

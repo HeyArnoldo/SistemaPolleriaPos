@@ -4,6 +4,7 @@ import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Expense } from '../entities/expense.entity';
 import { Payment } from '../../sales/entities/payment.entity';
 import { BIQuery } from '@app/contracts';
+import { resolveRangeStart, resolveRangeEnd } from './cash.service';
 
 type ResolvedPeriod = { start: Date; end: Date };
 
@@ -193,13 +194,16 @@ export class BIReportService {
     const bucket = this.resolveDateBucket(groupBy);
 
     const rows = await this.createPaymentBaseQuery(period, query.paymentMethodIds)
-      .select(`TO_CHAR(DATE_TRUNC('${bucket}', sale.createdAt), 'YYYY-MM-DD')`, 'date')
+      .select(
+        `TO_CHAR(DATE_TRUNC('${bucket}', sale.createdAt AT TIME ZONE 'America/Lima'), 'YYYY-MM-DD')`,
+        'date',
+      )
       .addSelect('COALESCE(SUM(payment.grossAmount),0)', 'salesGross')
       .addSelect('COALESCE(SUM(payment.netAmount),0)', 'salesNet')
       .addSelect('COALESCE(SUM(payment.commissionAmount),0)', 'commissionsTotal')
       .addSelect('COUNT(payment.id)', 'transactionCount')
-      .groupBy(`DATE_TRUNC('${bucket}', sale.createdAt)`)
-      .orderBy(`DATE_TRUNC('${bucket}', sale.createdAt)`, 'ASC')
+      .groupBy(`DATE_TRUNC('${bucket}', sale.createdAt AT TIME ZONE 'America/Lima')`)
+      .orderBy(`DATE_TRUNC('${bucket}', sale.createdAt AT TIME ZONE 'America/Lima')`, 'ASC')
       .getRawMany<TrendRow>();
 
     return rows.map((row) => ({
@@ -232,47 +236,70 @@ export class BIReportService {
 
   private resolvePeriod(query: BIQuery): ResolvedPeriod {
     if (query.startDate || query.endDate) {
-      const resolved = {
-        start: query.startDate ? new Date(query.startDate) : new Date('1970-01-01T00:00:00Z'),
-        end: query.endDate ? new Date(query.endDate) : new Date('9999-12-31T23:59:59.999Z'),
-      };
-      if (resolved.start > resolved.end) {
+      const start = query.startDate
+        ? (resolveRangeStart(query.startDate) ?? new Date('1970-01-01T00:00:00Z'))
+        : new Date('1970-01-01T00:00:00Z');
+      const end = query.endDate
+        ? (resolveRangeEnd(query.endDate) ?? new Date('9999-12-31T23:59:59.999Z'))
+        : new Date('9999-12-31T23:59:59.999Z');
+      if (start > end) {
         throw new BadRequestException('startDate cannot be greater than endDate');
       }
-      return resolved;
+      return { start, end };
     }
 
-    const now = new Date();
+    // Determine today's date in America/Lima (UTC-5, no DST)
+    const limaToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(
+      new Date(),
+    );
+    const [yearStr, monthStr] = limaToday.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10); // 1-based
+
     const period = query.period ?? 'today';
 
     if (period === 'week') {
-      const day = now.getDay();
-      const diffToMonday = day === 0 ? 6 : day - 1;
-      const start = new Date(now);
-      start.setDate(now.getDate() - diffToMonday);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      end.setHours(23, 59, 59, 999);
-      return { start, end };
+      // Monday-based week in Lima calendar
+      const limaDow = new Date(`${limaToday}T12:00:00-05:00`).getDay(); // 0=Sun
+      const diffToMonday = limaDow === 0 ? 6 : limaDow - 1;
+      const mondayDate = new Date(`${limaToday}T12:00:00-05:00`);
+      mondayDate.setDate(mondayDate.getDate() - diffToMonday);
+      const mondayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(
+        mondayDate,
+      );
+      const sundayDate = new Date(mondayDate);
+      sundayDate.setDate(mondayDate.getDate() + 6);
+      const sundayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(
+        sundayDate,
+      );
+      return {
+        start: new Date(`${mondayStr}T00:00:00.000-05:00`),
+        end: new Date(`${sundayStr}T23:59:59.999-05:00`),
+      };
     }
 
     if (period === 'month') {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      return { start, end };
+      const firstDay = `${yearStr}-${monthStr}-01`;
+      const lastDayDate = new Date(year, month, 0); // last day of month
+      const lastDay = `${yearStr}-${monthStr}-${String(lastDayDate.getDate()).padStart(2, '0')}`;
+      return {
+        start: new Date(`${firstDay}T00:00:00.000-05:00`),
+        end: new Date(`${lastDay}T23:59:59.999-05:00`),
+      };
     }
 
     if (period === 'year') {
-      const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-      const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-      return { start, end };
+      return {
+        start: new Date(`${yearStr}-01-01T00:00:00.000-05:00`),
+        end: new Date(`${yearStr}-12-31T23:59:59.999-05:00`),
+      };
     }
 
-    // Default: today
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    return { start, end };
+    // Default: today in Lima
+    return {
+      start: new Date(`${limaToday}T00:00:00.000-05:00`),
+      end: new Date(`${limaToday}T23:59:59.999-05:00`),
+    };
   }
 
   private resolveDateBucket(groupBy: string): 'day' | 'week' | 'month' {
