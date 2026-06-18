@@ -11,12 +11,12 @@
     "dist:win": "pnpm --filter @app/web build && vite build && node scripts/copy-web.mjs && electron-builder --win"
   },
   "dependencies": {
-    "electron": "^36.0.0",
     "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
     "concurrently": "^9.0.0",
+    "electron": "^36.0.0",
     "electron-builder": "^25.1.8",
     "typescript": "~5.9.3",
     "vite": "^7.3.0"
