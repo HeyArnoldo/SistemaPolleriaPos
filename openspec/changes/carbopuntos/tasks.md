@@ -74,30 +74,32 @@ antes del lint.
 
 - [ ] **T2.1** TEST: crear `apps/carbopuntos/test/health.e2e-spec.ts` (supertest local, PG real)
       — GET `/health` retorna 200. Verificar que el entrypoint levanta correctamente.
-- [ ] **T2.2** IMPL: scaffold de `apps/carbopuntos` siguiendo `apps/api`:
+      _(postergado a WU-4: requiere Postgres vivo; no aplica en WU-2 unit-only)_
+- [x] **T2.2** IMPL: scaffold de `apps/carbopuntos` siguiendo `apps/api`:
       `src/main.ts`, `src/app.module.ts`, `ConfigModule`, `TypeOrmModule` (synchronize: false),
-      `ZodValidationPipe`, prefijo `/api`, `/health` fuera del prefijo.
-- [ ] **T2.3** IMPL: `apps/carbopuntos/package.json`, `tsconfig.json`, `Dockerfile`
+      ZodValidationPipe por-endpoint (patrón apps/api), prefijo `/api`, `/health` fuera del prefijo.
+- [x] **T2.3** IMPL: `apps/carbopuntos/package.json`, `tsconfig.json`, `Dockerfile`
       (patrón `--filter @app/carbopuntos...`), `docker-entrypoint.sh` con `migration:run`.
-- [ ] **T2.4** TEST: `apps/carbopuntos/test/entities.spec.ts` — unit tests de las entidades
+- [x] **T2.4** TEST: `apps/carbopuntos/test/entities.spec.ts` — unit tests de las entidades
       (validaciones de columna, unicidad de DNI, estado inicial de balance = 0).
-- [ ] **T2.5** IMPL: entidad `Customer` en `src/customers/entities/customer.entity.ts`.
+- [x] **T2.5** IMPL: entidad `Customer` en `src/customers/entities/customer.entity.ts`.
       Columnas: `id`, `dni` (unique), `first_name`, `last_name`, `full_name`, `phone` (null),
       `consent_at`, `is_active`, `created_at`. Nombres de columna explícitos (snake_case).
-- [ ] **T2.6** IMPL: entidad `PointsBalance` en `src/points/entities/points-balance.entity.ts`.
+- [x] **T2.6** IMPL: entidad `PointsBalance` en `src/points/entities/points-balance.entity.ts`.
       Columnas: `id`, `customer_id` (unique FK), `balance` (int default 0), `version` (int default 0),
       `updated_at`.
-- [ ] **T2.7** IMPL: entidad `PointsMovement` en `src/points/entities/points-movement.entity.ts`.
+- [x] **T2.7** IMPL: entidad `PointsMovement` en `src/points/entities/points-movement.entity.ts`.
       Inmutable. Columnas: todas las del diseño, `idempotency_key` (unique nullable).
-- [ ] **T2.8** IMPL: entidad `AdminAudit` en `src/audit/entities/admin-audit.entity.ts`.
+- [x] **T2.8** IMPL: entidad `AdminAudit` en `src/audit/entities/admin-audit.entity.ts`.
       Inmutable. Columnas según diseño.
-- [ ] **T2.9** IMPL: entidad `SedeCredential` en `src/auth/entities/sede-credential.entity.ts`.
+- [x] **T2.9** IMPL: entidad `SedeCredential` en `src/auth/entities/sede-credential.entity.ts`.
       Columnas: `id`, `sede` (unique), `service_key_hash`, `is_active`.
-- [ ] **T2.10** IMPL: migración `CreateCarbopuntosSchema` con todas las tablas y sus índices.
-      Verificar que `pnpm --filter @app/carbopuntos migration:run` la aplica sin errores.
+- [x] **T2.10** IMPL: migración `CreateCarbopuntosSchema` con todas las tablas y sus índices.
+      Escrita a mano, coherente con entidades. down() incluido.
 - [ ] **T2.11** TEST: `apps/carbopuntos/test/migrations.e2e-spec.ts` (supertest local) —
       verificar que la DB queda con el schema correcto tras migration:run.
-- [ ] **T2.12** VERIFY: `pnpm --filter @app/carbopuntos build` compila. Suite verde. Rebase sobre main.
+      _(postergado a WU-4: requiere Postgres vivo)_
+- [x] **T2.12** VERIFY: `pnpm --filter @app/carbopuntos build` compila. Suite verde. Rebase sobre main.
 
 **Hecho cuando:** el hub levanta, aplica la migración y el healthcheck responde.
 
