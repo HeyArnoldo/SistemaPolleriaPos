@@ -1,11 +1,48 @@
-# SistemaPolleriaPos
+# 🍗 Sistema POS — Pollería Carbón
 
-Sistema POS (Punto de Venta) para pollerías. Monorepo pnpm con:
+Punto de venta para la cadena de pollerías **Pollería Carbón**: registrá ventas
+en segundos, cobrá con efectivo o billeteras digitales (Yape/Plin) con cálculo
+de comisiones, imprimí el ticket, y mirá la caja del día en tiempo real. Sigue
+funcionando **sin internet** y sincroniza solo cuando vuelve la conexión.
 
-- **Backend:** NestJS 11 + TypeORM + PostgreSQL 16
-- **Frontend:** React 19 + Vite 7 + Tailwind v4 + shadcn/ui
-- **Desktop:** Electron 36 (opcional, para impresión de tickets)
-- **Contratos compartidos:** Zod — misma validación en API y frontend
+Es un **monorepo pnpm** con API, web y app de escritorio compartiendo los mismos
+contratos de datos.
+
+## ✨ Funcionalidades
+
+- 🛒 **Ventas rápidas** con grilla de productos, filtros por categoría y carrito.
+- 💳 **Pago único o mixto** (Yape/Plin + Efectivo) con comisiones y vuelto.
+- 🧾 **Impresión de tickets** silenciosa vía la app de escritorio (Electron).
+- 💰 **Caja y dashboard** con resumen por método de pago, egresos y neto del día.
+- 📊 **BI / Historial**: ventas, comisiones y tendencias por período.
+- 📦 **Productos, categorías, métodos de pago y usuarios** administrables.
+- 📴 **Modo offline**: ventas/egresos se encolan localmente (IndexedDB) y se
+  sincronizan al reconectar; PIN para seguir operando sin internet.
+- 🔐 **Auth por usuario** con roles (Admin / Cajero), JWT en cookie httpOnly.
+
+## 📚 Documentación
+
+| Para…                         | Mirá                                            |
+| ----------------------------- | ----------------------------------------------- |
+| Levantar el proyecto          | este README (más abajo)                         |
+| Entender cómo está armado     | [`CLAUDE.md`](CLAUDE.md) — mapa + reglas de oro |
+| Arquitectura y flujo de datos | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)  |
+| Convenciones de código        | [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md)    |
+| Cómo funciona cada dominio    | [`docs/DOMAINS.md`](docs/DOMAINS.md)            |
+| Trampas conocidas (¡leelas!)  | [`docs/GOTCHAS.md`](docs/GOTCHAS.md)            |
+
+> 💡 Si vas a tocar código, leé `docs/` primero. Te ahorra escarbar y evita
+> romper convenciones (zona horaria, decimales, contratos, invalidación de caché).
+
+## 🧱 Stack
+
+| Capa      | Tecnología                                                   |
+| --------- | ------------------------------------------------------------ |
+| Backend   | NestJS 11 · TypeORM · PostgreSQL 16                          |
+| Frontend  | React 19 · Vite 7 · Tailwind v4 · shadcn/ui · TanStack Query |
+| Desktop   | Electron 36 (impresión de tickets)                           |
+| Contratos | Zod compartidos (misma validación en API y web)              |
+| Monorepo  | pnpm 11 · commits convencionales                             |
 
 ---
 
