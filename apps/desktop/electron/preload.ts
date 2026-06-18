@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('print-ticket', html, options),
   getPrinters: () => ipcRenderer.invoke('get-printers'),
   saveConfig: (url: string) => ipcRenderer.invoke('save-config', url),
+  openSetup: () => ipcRenderer.invoke('open-setup'),
 });
