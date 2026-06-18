@@ -4,7 +4,7 @@
  * handled by the backend proxy controller (WU-6a).
  */
 import { api } from '@/lib/api';
-import type { Customer, Balance, PointsMovement } from '@app/carbopuntos-contracts';
+import type { Customer, PointsMovement } from '@app/carbopuntos-contracts';
 
 // ─── Customer endpoints ───────────────────────────────────────────────────────
 
@@ -47,17 +47,9 @@ export const affiliateCustomer = async (payload: AffiliateCustomerPayload): Prom
   return data;
 };
 
-// ─── Balance lookup (read from customer search; hub proxied) ──────────────────
-
-/**
- * Fetch the current balance for a customer by DNI.
- * The proxy at /carbopuntos/customers/:dni includes balance information
- * embedded in the hub response (Balance typed field).
- */
-export const getCustomerBalance = async (dni: string): Promise<Balance> => {
-  const { data } = await api.get<Balance>(`/carbopuntos/customers/${dni}/balance`);
-  return data;
-};
+// Balance is read from GET /carbopuntos/customers/:dni (see getCustomer), which
+// already returns the embedded balance. There is no separate /:dni/balance
+// endpoint on the proxy, so no dedicated balance fetcher exists here.
 
 // ─── Admin operations ─────────────────────────────────────────────────────────
 

@@ -143,9 +143,10 @@ export function CustomerPanel({
           {(pointsToEarn > 0 || redemptionCost > 0) && (
             <div className="flex items-center justify-between text-xs border-t border-slate-600 mt-2 pt-2 font-bold">
               <span className="text-slate-200">Saldo proyectado</span>
-              <span className={projectedBalance >= 0 ? 'text-white' : 'text-red-400'}>
-                {projectedBalance} pts
-              </span>
+              {/* projectedBalance is clamped to >= 0 (D6: balance never negative),
+                  and the redeem button is blocked when balance is insufficient
+                  (hasEnoughBalance guard), so the projected value is always non-negative. */}
+              <span className="text-white">{projectedBalance} pts</span>
             </div>
           )}
         </div>
