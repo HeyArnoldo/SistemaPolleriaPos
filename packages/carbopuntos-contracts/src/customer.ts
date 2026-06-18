@@ -30,7 +30,10 @@ export const affiliateCustomerSchema = z.object({
   // Phone is optional at affiliation time.
   phone: z.string().optional(),
   // Explicit consent timestamp — required for GDPR/LPDP compliance.
-  consentAt: z.string().min(1),
+  consentAt: z
+    .string()
+    .datetime({ offset: true })
+    .or(z.coerce.date().transform((d) => d.toISOString())),
 });
 export type AffiliateCustomerInput = z.infer<typeof affiliateCustomerSchema>;
 

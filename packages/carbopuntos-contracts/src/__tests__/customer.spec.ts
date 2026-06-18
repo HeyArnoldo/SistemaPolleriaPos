@@ -122,6 +122,14 @@ describe('affiliateCustomerSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('rejects affiliation with a malformed consentAt timestamp', () => {
+    const result = affiliateCustomerSchema.safeParse({
+      dni: '12345678',
+      consentAt: 'not-a-timestamp',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('customerSearchSchema', () => {
