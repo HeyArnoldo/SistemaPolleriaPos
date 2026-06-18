@@ -265,39 +265,114 @@ docker compose -f docker-compose.prod.yml down -v        # Para Y elimina la bas
 
 ---
 
-## App de escritorio (Electron)
+## 🧪 Probar la aplicación
 
-La app de escritorio envuelve el frontend web y permite imprimir tickets sin diálogo de impresión.
+### Tests automáticos
+
+```bash
+pnpm test        # API (jest) + web (vitest) — corre en el CI de cada PR
+pnpm lint
+pnpm typecheck
+```
+
+### Probar a mano (flujo clave)
+
+Con `pnpm dev` levantado (+ DB, migraciones y seed, ver arriba), entrá con el admin y recorré:
+
+1. Crear un producto → **vender** (probá efectivo y pago mixto Yape+Efectivo).
+2. Ver que **Caja** y **Dashboard** se actualizan en el momento.
+3. Registrar un **egreso** → ver que aparece en la lista y en la caja.
+4. Exportar el **reporte Excel** y revisar totales.
+5. **Anular** una venta → ver que se refleja.
+
+### Pre-producción (probar el stack de producción localmente)
+
+`docker-compose.prod.yml` construye los **Dockerfiles reales** (api + web + db) igual que en producción. Úsalo para validar antes de desplegar a Coolify:
+
+```bash
+docker compose -f docker-compose.prod.yml build --build-arg VITE_API_URL=http://localhost:3000
+docker compose -f docker-compose.prod.yml up -d
+# web → http://localhost:8090   ·   api → http://localhost:3000
+curl http://localhost:3000/health      # {"status":"ok"}
+```
+
+Esto verifica que los Dockerfiles, las migraciones y el seed funcionan end-to-end.
+
+---
+
+## 🖥️ App de escritorio (Electron)
+
+Es el **target real del modo offline**: la app **empaqueta la web adentro** y la
+carga local, así abre y vende **con o sin internet**. Solo el **API** es remoto.
 
 ### Modo desarrollo
 
 ```bash
-# Primero levanta el frontend web
-pnpm dev:web
-
-# En otra terminal, levanta Electron
-cd apps/desktop
-pnpm dev   # Abre una ventana apuntando a http://localhost:5173
+pnpm dev:web                  # frontend en localhost:5173
+cd apps/desktop && pnpm dev   # Electron apuntando al dev server
 ```
 
-### Configurar la URL del backend
-
-La variable `WEB_URL` en `apps/desktop/electron/main.ts` controla a qué frontend apunta la app. Por defecto: `http://localhost:8090` (el docker-compose.prod.yml).
-
-Para producción, edita esa línea antes de compilar:
-
-```typescript
-const WEB_URL = process.env.WEB_URL ?? 'https://pos.tudominio.com';
-```
-
-### Compilar el instalador
+### Construir el instalador (Windows)
 
 ```bash
-cd apps/desktop
-pnpm build   # Genera los archivos en dist-electron/
+pnpm --filter @app/desktop dist:win
+# Hace: build de la web → build de Electron → copia la web adentro → electron-builder
+# Genera el instalador .exe en  apps/desktop/release/
 ```
 
-> Para generar instaladores `.exe` (Windows) o `.dmg` (Mac) se necesita `electron-builder`. Ver la sección de empaquetado más abajo.
+(Para Mac/Linux: usar `dist` en vez de `dist:win`, desde esa plataforma.)
+
+### Primer arranque y configuración
+
+1. Al abrir por primera vez pide la **URL del API** de la sucursal
+   (ej. `https://api-polleria-tusucursal.groowtech.com`). Se guarda local; solo
+   se hace una vez.
+2. Entrá como admin → **Configuración → Acceso sin conexión (PIN)** → definí el
+   PIN de 4 dígitos para vender offline.
+
+### Probar el modo offline
+
+1. Con internet: entrá y hacé una venta (se sincroniza al servidor).
+2. Cortá el internet (desconectá el WiFi).
+3. Cerrá y reabrí la app → **carga igual** (web local) y los **productos siguen
+   apareciendo** (catálogo cacheado).
+4. En el login aparece **"Ingresar sin conexión"** → poné el PIN → entrás como
+   cajero → vendé e imprimí.
+5. Reconectá → te pide login → al entrar, **sincroniza** las ventas encoladas.
+
+> ⚠️ **Si el login _online_ falla en la app instalada**: es la cookie cross-origin
+> (la app corre en `app://`, el API en `https://`). Poné `COOKIE_SAMESITE=none` en
+> el API y permití el origen `app://` en el CORS. Ver `docs/GOTCHAS.md`.
+
+---
+
+## 🚀 Releases automáticos (auto-update del desktop)
+
+Sí, GitHub ya hace los releases — y está armado de la forma **recomendada: por
+tag, no en cada push.**
+
+### Cómo se publica una versión
+
+1. Subí la versión en `apps/desktop/package.json` (ej. `0.2.0`).
+2. Tageá y empujá:
+   ```bash
+   git tag v0.2.0 && git push origin v0.2.0
+   ```
+3. El workflow `.github/workflows/release.yml` (en `windows-latest`) construye el
+   instalador y lo **publica en GitHub Releases** automáticamente.
+4. Las apps ya instaladas se **auto-actualizan** (electron-updater chequea los
+   releases de GitHub al abrir).
+
+También se puede disparar a mano desde la pestaña **Actions** (workflow_dispatch).
+
+### ¿Conviene automatizarlo del todo (release en cada push)?
+
+**No, y por eso no se hizo así.** En un POS de escritorio no querés mandar un
+instalador nuevo a las PCs en cada commit: sería ruido y arriesgás romper
+producción con algo sin probar. El modelo correcto es el que está: **release
+deliberado por tag**, versionado, que vos controlás cuándo. Lo "automático" es
+todo lo que pasa _después_ del tag (build + publish + auto-update). Ese es el
+equilibrio sano entre automatización y control.
 
 ---
 
