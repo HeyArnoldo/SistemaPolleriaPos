@@ -31,8 +31,9 @@ export const getCurrentTimeValue = (): string => {
 
 type TicketCounterState = { date: string; seq: number };
 
-const formatDateKey = (date: Date) =>
-  `${date.getFullYear()}${pad2(date.getMonth() + 1)}${pad2(date.getDate())}`;
+/** Returns the current date string (YYYY-MM-DD) in America/Lima timezone. */
+const limaDateString = (): string =>
+  new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
 
 const parseTicketCounter = (raw: string | null): TicketCounterState | null => {
   if (!raw) return null;
@@ -58,8 +59,9 @@ export const syncTicketCounterFromSale = (): boolean => {
 };
 
 export const generateSaleNumber = (): string => {
-  const now = new Date();
-  const dateKey = formatDateKey(now);
+  const limaDate = limaDateString(); // 'YYYY-MM-DD' in America/Lima
+  const [yearStr, monthStr, dayStr] = limaDate.split('-');
+  const dateKey = `${yearStr}${monthStr}${dayStr}`;
   let seq = 1;
   try {
     const stored = parseTicketCounter(localStorage.getItem(TICKET_COUNTER_KEY));
@@ -70,7 +72,8 @@ export const generateSaleNumber = (): string => {
   } catch {
     // ignore
   }
-  const month = MONTH_SHORT[now.getMonth()];
-  const day = pad2(now.getDate());
+  const monthIndex = parseInt(monthStr, 10) - 1;
+  const month = MONTH_SHORT[monthIndex];
+  const day = dayStr;
   return `${month}-${day}-${pad4(seq)}`;
 };

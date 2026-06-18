@@ -24,8 +24,8 @@ function getTodayLima(): string {
 
 function getDayRange(date: string): { from: string; to: string } {
   return {
-    from: `${date}T00:00:00`,
-    to: `${date}T23:59:59`,
+    from: `${date}T00:00:00-05:00`,
+    to: `${date}T23:59:59.999-05:00`,
   };
 }
 
