@@ -12,11 +12,12 @@ import { SalesService } from './services/sales.service';
 import { Sale } from './entities/sale.entity';
 import { PaymentMethod } from './entities/payment-method.entity';
 import { Product } from '../inventory/entities/product.entity';
-import { CarbopuntosUnavailableError } from '@app/carbopuntos-client';
+import { CarbopuntosApiError, CarbopuntosUnavailableError } from '@app/carbopuntos-client';
 import {
   CARBOPUNTOS_CLIENT_TOKEN,
   CARBOPUNTOS_PENDING_TOKEN,
 } from '../carbopuntos/carbopuntos.tokens';
+import { ConfigService } from '@nestjs/config';
 
 // ------------------------------------------------------------------
 // Helpers
@@ -107,6 +108,7 @@ describe('SalesService.createSale — carbopuntos integration', () => {
         { provide: getRepositoryToken(Sale), useValue: mockSaleRepo },
         { provide: CARBOPUNTOS_CLIENT_TOKEN, useValue: mockClient },
         { provide: CARBOPUNTOS_PENDING_TOKEN, useValue: mockPendingService },
+        { provide: ConfigService, useValue: { get: jest.fn(() => 'SEDE-01') } },
       ],
     }).compile();
 
@@ -200,6 +202,48 @@ describe('SalesService.createSale — carbopuntos integration', () => {
       expect.objectContaining({
         operation: 'accrue',
         customerDni: '12345678',
+      }),
+    );
+  });
+
+  it('does NOT enqueue when hub responds with a business (4xx) error', async () => {
+    // CarbopuntosApiError is a permanent business/validation error: retrying
+    // will never fix it, so it must be logged, not enqueued.
+    mockClient.accrue.mockRejectedValue(
+      new CarbopuntosApiError('Saldo insuficiente', 409, { error: 'insufficient' }),
+    );
+
+    await expect(
+      service.createSale(
+        {
+          saleNumber: 'SALE-001',
+          customerDni: '12345678',
+          items: [{ productId: 1, quantity: 2, unitPrice: 10 }],
+          payments: [{ paymentMethodId: 1, amount: 20 }],
+        },
+        makeUser(),
+      ),
+    ).resolves.not.toThrow();
+
+    expect(mockPendingService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('builds the idempotencyKey including the STORE_ID (sede)', async () => {
+    mockClient.accrue.mockResolvedValue({ id: 'mov-1' });
+
+    await service.createSale(
+      {
+        saleNumber: 'SALE-001',
+        customerDni: '12345678',
+        items: [{ productId: 1, quantity: 2, unitPrice: 10 }],
+        payments: [{ paymentMethodId: 1, amount: 20 }],
+      },
+      makeUser(),
+    );
+
+    expect(mockClient.accrue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: 'SEDE-01:SALE-001:accrual',
       }),
     );
   });

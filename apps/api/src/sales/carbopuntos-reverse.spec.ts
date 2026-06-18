@@ -8,11 +8,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { SalesService } from './services/sales.service';
 import { Sale } from './entities/sale.entity';
-import { CarbopuntosUnavailableError } from '@app/carbopuntos-client';
+import { CarbopuntosApiError, CarbopuntosUnavailableError } from '@app/carbopuntos-client';
 import {
   CARBOPUNTOS_CLIENT_TOKEN,
   CARBOPUNTOS_PENDING_TOKEN,
 } from '../carbopuntos/carbopuntos.tokens';
+import { ConfigService } from '@nestjs/config';
 
 const makeUser = () => ({ id: 1, username: 'cashier' }) as any;
 
@@ -58,6 +59,7 @@ describe('SalesService.cancelSale — carbopuntos integration', () => {
         { provide: getRepositoryToken(Sale), useValue: mockSaleRepo },
         { provide: CARBOPUNTOS_CLIENT_TOKEN, useValue: mockClient },
         { provide: CARBOPUNTOS_PENDING_TOKEN, useValue: mockPendingService },
+        { provide: ConfigService, useValue: { get: jest.fn(() => 'SEDE-01') } },
       ],
     }).compile();
 
@@ -99,6 +101,28 @@ describe('SalesService.cancelSale — carbopuntos integration', () => {
         operation: 'reverse',
         customerDni: '12345678',
         saleRef: 'SALE-010',
+      }),
+    );
+  });
+
+  it('does NOT enqueue when hub responds with a business (4xx) error on reverse', async () => {
+    mockClient.reverse.mockRejectedValue(
+      new CarbopuntosApiError('DNI no encontrado', 404, { error: 'not_found' }),
+    );
+
+    await expect(service.cancelSale(10, 'Cancelado', makeUser())).resolves.not.toThrow();
+
+    expect(mockPendingService.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('builds the reverse idempotencyKey including the STORE_ID (sede)', async () => {
+    mockClient.reverse.mockResolvedValue({ id: 'mov-rev-1' });
+
+    await service.cancelSale(10, 'Cancelado', makeUser());
+
+    expect(mockClient.reverse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: 'SEDE-01:SALE-010:reversal',
       }),
     );
   });

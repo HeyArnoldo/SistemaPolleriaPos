@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, LessThanOrEqual, Or, Repository } from 'typeorm';
 import { CarbopuntosPendingMovement } from './entities/pending-movement.entity';
 import { CARBOPUNTOS_CLIENT_TOKEN } from './carbopuntos.tokens';
 import type { CarbopuntosClient } from '@app/carbopuntos-client';
@@ -8,6 +8,17 @@ import { CarbopuntosUnavailableError } from '@app/carbopuntos-client';
 
 /** Maximum retry attempts before marking the record as failed. */
 const MAX_ATTEMPTS = 5;
+
+/** Base backoff in milliseconds; the delay grows with the attempt count. */
+const BACKOFF_BASE_MS = 30_000;
+
+/**
+ * Simple per-attempt backoff: attempt 1 → 30s, attempt 2 → 60s, attempt 3 → 90s…
+ * Linear is intentional — easy to reason about and bounded by MAX_ATTEMPTS.
+ */
+function computeNextRetryAt(attemptCount: number): Date {
+  return new Date(Date.now() + BACKOFF_BASE_MS * attemptCount);
+}
 
 export interface EnqueuePayload {
   operation: 'accrue' | 'reverse';
@@ -22,8 +33,10 @@ export interface EnqueuePayload {
  * CarbopuntosPendingService — manages the local queue of hub operations
  * that failed due to hub unavailability (D16).
  *
- * Retried with a simple attempt counter (exponential backoff logic lives in
- * the scheduler/trigger that calls retryPending). After MAX_ATTEMPTS,
+ * Retried with a simple per-attempt backoff (next_retry_at): transient
+ * failures (CarbopuntosUnavailableError) are rescheduled and retried up to
+ * MAX_ATTEMPTS; permanent failures (CarbopuntosApiError, 4xx) are marked
+ * failed immediately without consuming attempts. After MAX_ATTEMPTS,
  * status = 'failed' and the record requires manual review (C14).
  */
 @Injectable()
@@ -63,8 +76,13 @@ export class CarbopuntosPendingService {
       return;
     }
 
+    // Only pick up movements whose backoff window has elapsed
+    // (nextRetryAt is null or already in the past).
     const pending = await this.pendingRepo.find({
-      where: { status: In(['pending', 'retrying']) },
+      where: {
+        status: In(['pending', 'retrying']),
+        nextRetryAt: Or(IsNull(), LessThanOrEqual(new Date())),
+      },
     });
 
     for (const movement of pending) {
@@ -73,6 +91,19 @@ export class CarbopuntosPendingService {
   }
 
   private async retryOne(movement: CarbopuntosPendingMovement): Promise<void> {
+    // The retry MUST reuse the original stored idempotency key. If it is
+    // missing, that is a data error (we must never invent a new key, or the
+    // hub could double-apply the operation) — mark it failed for manual review.
+    if (!movement.idempotencyKey) {
+      movement.status = 'failed';
+      movement.lastError = 'Missing idempotencyKey — cannot safely retry';
+      this.logger.error(
+        `Movement ${movement.id} has no idempotencyKey. Marking as failed (data error).`,
+      );
+      await this.pendingRepo.save(movement);
+      return;
+    }
+
     try {
       if (movement.operation === 'accrue') {
         await this.client!.accrue({
@@ -80,35 +111,51 @@ export class CarbopuntosPendingService {
           points: movement.points,
           saleRef: movement.saleRef ?? undefined,
           userRef: movement.userRef ?? 'system',
-          idempotencyKey: movement.idempotencyKey ?? `${movement.id}:retry`,
+          idempotencyKey: movement.idempotencyKey,
         });
       } else if (movement.operation === 'reverse') {
         await this.client!.reverse({
           customerDni: movement.customerDni,
           saleRef: movement.saleRef ?? '',
           userRef: movement.userRef ?? 'system',
-          idempotencyKey: movement.idempotencyKey ?? `${movement.id}:reverse`,
+          idempotencyKey: movement.idempotencyKey,
         });
       }
 
       movement.status = 'done';
       movement.lastError = null;
+      movement.nextRetryAt = null;
       await this.pendingRepo.save(movement);
     } catch (err: unknown) {
+      // Permanent (business/validation) errors will never succeed on retry:
+      // mark failed immediately WITHOUT consuming a retry attempt.
+      if (!(err instanceof CarbopuntosUnavailableError)) {
+        movement.status = 'failed';
+        movement.lastError = String(err instanceof Error ? err.message : err);
+        movement.nextRetryAt = null;
+        this.logger.error(
+          `Movement ${movement.id} failed permanently (non-retryable): ${movement.lastError}`,
+        );
+        await this.pendingRepo.save(movement);
+        return;
+      }
+
+      // Transient failure: schedule the next retry with backoff.
       const newAttemptCount = movement.attemptCount + 1;
-      const isUnavailable = err instanceof CarbopuntosUnavailableError || err instanceof Error;
 
       if (newAttemptCount >= MAX_ATTEMPTS) {
         movement.status = 'failed';
+        movement.nextRetryAt = null;
         this.logger.error(
           `Movement ${movement.id} reached max attempts (${MAX_ATTEMPTS}). Marking as failed.`,
         );
       } else {
         movement.status = 'retrying';
+        movement.nextRetryAt = computeNextRetryAt(newAttemptCount);
       }
 
       movement.attemptCount = newAttemptCount;
-      movement.lastError = isUnavailable ? (err as Error).message : String(err);
+      movement.lastError = err.message;
       await this.pendingRepo.save(movement);
     }
   }

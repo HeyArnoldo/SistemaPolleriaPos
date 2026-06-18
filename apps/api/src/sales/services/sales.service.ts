@@ -21,6 +21,8 @@ import {
 } from '../../carbopuntos/carbopuntos.tokens';
 import { CarbopuntosPendingService } from '../../carbopuntos/pending-queue.service';
 import type { CarbopuntosClient } from '@app/carbopuntos-client';
+import { CarbopuntosUnavailableError } from '@app/carbopuntos-client';
+import { ConfigService } from '@nestjs/config';
 
 export interface SalesFilter {
   from?: string;
@@ -42,7 +44,25 @@ export class SalesService {
     @Optional()
     @Inject(CARBOPUNTOS_PENDING_TOKEN)
     private readonly pendingService: CarbopuntosPendingService | null,
+    @Optional()
+    @Inject(ConfigService)
+    private readonly config: ConfigService | null,
   ) {}
+
+  /**
+   * Builds a stable, sede-aware idempotency key (D15).
+   *
+   * The saleNumber is generated per sede on the client and is NOT unique
+   * across sedes, while the hub is shared. Prefixing with STORE_ID guarantees
+   * a globally unique key. The SAME key is stored on the pending queue so the
+   * retry reuses it verbatim — never generating a new one.
+   *
+   * Format: `${storeId}:${saleNumber}:${type}`.
+   */
+  private buildIdempotencyKey(saleNumber: string, type: 'accrual' | 'reversal'): string {
+    const storeId = this.config?.get<string>('STORE_ID') ?? '';
+    return `${storeId}:${saleNumber}:${type}`;
+  }
 
   async createSale(dto: CreateSaleDto, user: User): Promise<Sale> {
     if (dto.saleNumber) {
@@ -158,7 +178,7 @@ export class SalesService {
 
     if (totalPoints <= 0) return; // No points to accrue
 
-    const idempotencyKey = `${sale.saleNumber}:accrual`;
+    const idempotencyKey = this.buildIdempotencyKey(sale.saleNumber, 'accrual');
 
     try {
       await this.carbopuntosClient.accrue({
@@ -169,19 +189,27 @@ export class SalesService {
         idempotencyKey,
       });
     } catch (err: unknown) {
-      // Both hub unavailability and unexpected errors enqueue for retry.
       // The sale is NEVER blocked regardless of error type (D1/RNF-04).
-      this.logger.warn(
-        `Error accruing points for sale ${sale.saleNumber}: ${String(err)}. Enqueuing for retry.`,
-      );
-      await this.pendingService?.enqueue({
-        operation: 'accrue',
-        customerDni,
-        saleRef: sale.saleNumber,
-        points: totalPoints,
-        idempotencyKey,
-        userRef: String(user.id),
-      });
+      // Only enqueue transient failures (hub down / network / timeout). A
+      // CarbopuntosApiError (4xx business/validation) is permanent: retrying
+      // won't fix it, so we just log it instead of polluting the queue (D16).
+      if (err instanceof CarbopuntosUnavailableError) {
+        this.logger.warn(
+          `Hub unavailable accruing points for sale ${sale.saleNumber}: ${err.message}. Enqueuing for retry.`,
+        );
+        await this.pendingService?.enqueue({
+          operation: 'accrue',
+          customerDni,
+          saleRef: sale.saleNumber,
+          points: totalPoints,
+          idempotencyKey,
+          userRef: String(user.id),
+        });
+      } else {
+        this.logger.error(
+          `Permanent error accruing points for sale ${sale.saleNumber}: ${String(err)}. Not enqueuing.`,
+        );
+      }
     }
   }
 
@@ -283,7 +311,7 @@ export class SalesService {
   private async tryReverse(sale: Sale, user: User): Promise<void> {
     if (!sale.customerDni || !this.carbopuntosClient) return;
 
-    const idempotencyKey = `${sale.saleNumber}:reversal`;
+    const idempotencyKey = this.buildIdempotencyKey(sale.saleNumber, 'reversal');
 
     try {
       await this.carbopuntosClient.reverse({
@@ -293,16 +321,24 @@ export class SalesService {
         idempotencyKey,
       });
     } catch (err: unknown) {
-      this.logger.warn(
-        `Error reversing points for sale ${sale.saleNumber}: ${String(err)}. Enqueuing for retry.`,
-      );
-      await this.pendingService?.enqueue({
-        operation: 'reverse',
-        customerDni: sale.customerDni,
-        saleRef: sale.saleNumber,
-        idempotencyKey,
-        userRef: String(user.id),
-      });
+      // Cancellation is already saved; never throw (D5/C5). Only enqueue
+      // transient failures. A CarbopuntosApiError (4xx) is permanent — log it.
+      if (err instanceof CarbopuntosUnavailableError) {
+        this.logger.warn(
+          `Hub unavailable reversing points for sale ${sale.saleNumber}: ${err.message}. Enqueuing for retry.`,
+        );
+        await this.pendingService?.enqueue({
+          operation: 'reverse',
+          customerDni: sale.customerDni,
+          saleRef: sale.saleNumber,
+          idempotencyKey,
+          userRef: String(user.id),
+        });
+      } else {
+        this.logger.error(
+          `Permanent error reversing points for sale ${sale.saleNumber}: ${String(err)}. Not enqueuing.`,
+        );
+      }
     }
   }
 }

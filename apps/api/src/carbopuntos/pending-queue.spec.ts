@@ -7,7 +7,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { CarbopuntosPendingService } from './pending-queue.service';
 import { CarbopuntosPendingMovement } from './entities/pending-movement.entity';
 import { CARBOPUNTOS_CLIENT_TOKEN } from './carbopuntos.tokens';
-import { CarbopuntosUnavailableError } from '@app/carbopuntos-client';
+import { CarbopuntosApiError, CarbopuntosUnavailableError } from '@app/carbopuntos-client';
 
 const makePending = (
   overrides?: Partial<CarbopuntosPendingMovement>,
@@ -23,6 +23,7 @@ const makePending = (
   p.status = 'pending';
   p.attemptCount = 0;
   p.lastError = null;
+  p.nextRetryAt = null;
   p.createdAt = new Date();
   return Object.assign(p, overrides);
 };
@@ -116,6 +117,70 @@ describe('CarbopuntosPendingService', () => {
           attemptCount: 1,
         }),
       );
+    });
+
+    it('marks a permanent (4xx) error as failed without consuming retry attempts', async () => {
+      // A CarbopuntosApiError is permanent: it will never succeed on retry,
+      // so the movement must be marked failed immediately, not retried.
+      const pending = makePending({ status: 'pending', attemptCount: 0 });
+      mockRepo.find.mockResolvedValue([pending]);
+      mockClient.accrue.mockRejectedValue(
+        new CarbopuntosApiError('Saldo insuficiente', 409, { error: 'insufficient' }),
+      );
+      mockRepo.save.mockImplementation((m: CarbopuntosPendingMovement) => Promise.resolve(m));
+
+      await service.retryPending();
+
+      expect(mockRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'failed', attemptCount: 0 }),
+      );
+    });
+
+    it('schedules nextRetryAt in the future on a transient (unavailable) failure', async () => {
+      const pending = makePending({ status: 'pending', attemptCount: 0 });
+      mockRepo.find.mockResolvedValue([pending]);
+      mockClient.accrue.mockRejectedValue(new CarbopuntosUnavailableError('Hub caído'));
+      mockRepo.save.mockImplementation((m: CarbopuntosPendingMovement) => Promise.resolve(m));
+
+      const before = Date.now();
+      await service.retryPending();
+
+      const saved = mockRepo.save.mock.calls[0][0] as CarbopuntosPendingMovement;
+      expect(saved.status).toBe('retrying');
+      expect(saved.nextRetryAt).toBeInstanceOf(Date);
+      expect(saved.nextRetryAt!.getTime()).toBeGreaterThan(before);
+    });
+
+    it('reuses the stored idempotencyKey on retry (never generates a new one)', async () => {
+      const pending = makePending({
+        status: 'pending',
+        attemptCount: 0,
+        idempotencyKey: 'SEDE-01:SALE-001:accrual',
+      });
+      mockRepo.find.mockResolvedValue([pending]);
+      mockClient.accrue.mockResolvedValue({ id: 'mov-1' });
+      mockRepo.save.mockImplementation((m: CarbopuntosPendingMovement) => Promise.resolve(m));
+
+      await service.retryPending();
+
+      expect(mockClient.accrue).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: 'SEDE-01:SALE-001:accrual' }),
+      );
+    });
+
+    it('marks as failed (data error) when a pending movement has no idempotencyKey', async () => {
+      const pending = makePending({
+        status: 'pending',
+        attemptCount: 0,
+        idempotencyKey: null,
+      });
+      mockRepo.find.mockResolvedValue([pending]);
+      mockRepo.save.mockImplementation((m: CarbopuntosPendingMovement) => Promise.resolve(m));
+
+      await service.retryPending();
+
+      expect(mockClient.accrue).not.toHaveBeenCalled();
+      expect(mockRepo.save).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }));
     });
 
     it('marks as failed after reaching max attempts', async () => {

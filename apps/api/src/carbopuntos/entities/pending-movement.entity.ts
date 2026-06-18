@@ -8,7 +8,8 @@ import {
 
 /**
  * CarbopuntosPendingMovement — local queue for hub operations that failed
- * due to hub unavailability (D16). Retried with exponential backoff.
+ * due to hub unavailability (D16). Retried with a simple per-attempt backoff
+ * (next_retry_at), capped at MAX_ATTEMPTS.
  * Status lifecycle: pending → retrying → done | failed.
  */
 @Entity('carbopuntos_pending_movement')
@@ -46,6 +47,14 @@ export class CarbopuntosPendingMovement {
 
   @Column({ type: 'text', nullable: true, default: null, name: 'last_error' })
   lastError: string | null;
+
+  /**
+   * Earliest time this movement is eligible for the next retry (simple
+   * per-attempt backoff). retryPending skips movements whose nextRetryAt is
+   * still in the future. Null means "retry as soon as possible".
+   */
+  @Column({ type: 'timestamptz', nullable: true, default: null, name: 'next_retry_at' })
+  nextRetryAt: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
