@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -15,6 +16,7 @@ import { PaymentMethod } from '../entities/payment-method.entity';
 import { Product } from '../../inventory/entities/product.entity';
 import { User } from '../../users/user.entity';
 import { CreateSaleDto, SyncSalesDto } from '../dto/create-sale.dto';
+import type { RedemptionItemInput } from '@app/contracts';
 import {
   CARBOPUNTOS_CLIENT_TOKEN,
   CARBOPUNTOS_PENDING_TOKEN,
@@ -59,18 +61,32 @@ export class SalesService {
    *
    * Format: `${storeId}:${saleNumber}:${type}`.
    */
-  private buildIdempotencyKey(saleNumber: string, type: 'accrual' | 'reversal'): string {
+  private buildIdempotencyKey(
+    saleNumber: string,
+    type: 'accrual' | 'reversal' | 'operation' | 'redeem',
+  ): string {
     const storeId = this.config?.get<string>('STORE_ID') ?? '';
     return `${storeId}:${saleNumber}:${type}`;
   }
 
   async createSale(dto: CreateSaleDto, user: User): Promise<Sale> {
+    const hasRedemptions = dto.redemptions && dto.redemptions.length > 0;
+    const hasItems = dto.items.length > 0;
+
+    // Guard: empty cart without redemptions is never valid (F1 / existing rule).
+    // Solo-canje (empty items + redemptions) is allowed per F5.
+    if (!hasItems && !hasRedemptions) {
+      throw new BadRequestException(
+        'At least one item is required when no redemptions are present',
+      );
+    }
+
     if (dto.saleNumber) {
       const existing = await this.saleRepo.findOne({ where: { saleNumber: dto.saleNumber } });
       if (existing) throw new ConflictException(`Sale number "${dto.saleNumber}" already exists`);
     }
 
-    // Compute totals from items
+    // Compute totals from items only — redemptions are courtesy, NOT monetary (D4).
     const subtotal = dto.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
     const totalAmount = subtotal;
 
@@ -151,9 +167,19 @@ export class SalesService {
       return full ?? created;
     });
 
-    // Best-effort: accrue points after sale is persisted (D1/RNF-04).
-    // Never blocks the sale if the hub is down.
-    await this.tryAccrue(sale, dto.items, customerDni, user, puntajeMap);
+    // Points handling after sale is persisted:
+    // - With redemptions: operation is REQUIRED (hub must be online — D1/C1/C3). Throws on failure.
+    // - Without redemptions: best-effort accrue only (degrades to queue if hub is down — D1/RNF-04).
+    if (hasRedemptions) {
+      // Throws if the hub is unavailable or rejects (D1: canje always requires hub online).
+      // The sale record is already in DB at this point but the redemption is rolled back if
+      // we throw here — the caller can retry. The sale without redemptions is considered
+      // incomplete and should not be shown to the cashier unless the full operation succeeds.
+      await this.tryOperation(sale, dto.items, customerDni!, user, puntajeMap, dto.redemptions!);
+    } else {
+      // Best-effort: enqueue on transient hub failure (existing behavior).
+      await this.tryAccrue(sale, dto.items, customerDni, user, puntajeMap);
+    }
 
     return sale;
   }
@@ -210,6 +236,60 @@ export class SalesService {
           `Permanent error accruing points for sale ${sale.saleNumber}: ${String(err)}. Not enqueuing.`,
         );
       }
+    }
+  }
+
+  /**
+   * Executes the combined accrue + redeem (or redeem-only) operation for a sale
+   * that includes redemptions.
+   *
+   * KEY RULE (D1/C1/C3): the canje ALWAYS requires hub online. If the hub is
+   * unavailable or returns any error, this method THROWS — the caller is expected
+   * to propagate the error so the front-end can inform the cashier. We never
+   * enqueue redemptions for silent retry (unlike plain accruals).
+   */
+  private async tryOperation(
+    sale: Sale,
+    items: Array<{ productId: number; quantity: number; unitPrice: number }>,
+    customerDni: string,
+    user: User,
+    puntajeMap: Map<number, number>,
+    redemptions: RedemptionItemInput[],
+  ): Promise<void> {
+    if (!this.carbopuntosClient) {
+      throw new Error('Carbopuntos hub is not configured — redemptions require hub connectivity');
+    }
+
+    const totalAcrual = items.reduce((sum, item) => {
+      return sum + (puntajeMap.get(item.productId) ?? 0) * item.quantity;
+    }, 0);
+
+    const totalRedemptionPoints = redemptions.reduce((sum, r) => sum + r.costPoints, 0);
+    const redeemDetail = redemptions.map((r) => r.description).join('; ');
+
+    if (totalAcrual > 0) {
+      // Mixed: accrue + redeem in one atomic transaction (F6).
+      const idempotencyKey = this.buildIdempotencyKey(sale.saleNumber, 'operation');
+      await this.carbopuntosClient.operation({
+        customerDni,
+        accrualPoints: totalAcrual,
+        redemptionPoints: totalRedemptionPoints,
+        saleRef: sale.saleNumber,
+        userRef: String(user.id),
+        detail: redeemDetail,
+        idempotencyKey,
+      });
+    } else {
+      // Redeem only (no accrual — e.g., all products have puntaje=0, or empty cart) (F5).
+      const idempotencyKey = this.buildIdempotencyKey(sale.saleNumber, 'redeem');
+      await this.carbopuntosClient.redeem({
+        customerDni,
+        points: totalRedemptionPoints,
+        saleRef: sale.saleNumber,
+        userRef: String(user.id),
+        detail: redeemDetail,
+        idempotencyKey,
+      });
     }
   }
 
