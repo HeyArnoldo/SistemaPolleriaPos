@@ -18,6 +18,27 @@ services:
       timeout: 5s
       retries: 10
 
+  # Base de datos PROPIA del hub CARBOPUNTOS (separada de la del POS).
+  # Opt-in: docker compose --profile carbopuntos up -d carbopuntos-db
+  # Puerto 5433 por defecto para no chocar con la db del POS (5432).
+  carbopuntos-db:
+    image: postgres:16-alpine
+    container_name: carbopuntos-hub-db
+    profiles: ['carbopuntos']
+    environment:
+      POSTGRES_USER: ${CARBOPUNTOS_DB_USER:-app}
+      POSTGRES_PASSWORD: ${CARBOPUNTOS_DB_PASSWORD:-app}
+      POSTGRES_DB: ${CARBOPUNTOS_DB_NAME:-carbopuntos}
+    ports:
+      - '${CARBOPUNTOS_DB_PORT:-5433}:5432'
+    volumes:
+      - carbopuntos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${CARBOPUNTOS_DB_USER:-app} -d ${CARBOPUNTOS_DB_NAME:-carbopuntos}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   adminer:
     image: adminer:4
     profiles: ['tools']
@@ -29,3 +50,4 @@ services:
 
 volumes:
   pgdata:
+  carbopuntos_pgdata:
