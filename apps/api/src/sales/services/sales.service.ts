@@ -1,4 +1,11 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Sale } from '../entities/sale.entity';
@@ -8,6 +15,12 @@ import { PaymentMethod } from '../entities/payment-method.entity';
 import { Product } from '../../inventory/entities/product.entity';
 import { User } from '../../users/user.entity';
 import { CreateSaleDto, SyncSalesDto } from '../dto/create-sale.dto';
+import {
+  CARBOPUNTOS_CLIENT_TOKEN,
+  CARBOPUNTOS_PENDING_TOKEN,
+} from '../../carbopuntos/carbopuntos.tokens';
+import { CarbopuntosPendingService } from '../../carbopuntos/pending-queue.service';
+import type { CarbopuntosClient } from '@app/carbopuntos-client';
 
 export interface SalesFilter {
   from?: string;
@@ -19,7 +32,17 @@ export interface SalesFilter {
 
 @Injectable()
 export class SalesService {
-  constructor(@InjectRepository(Sale) private readonly saleRepo: Repository<Sale>) {}
+  private readonly logger = new Logger(SalesService.name);
+
+  constructor(
+    @InjectRepository(Sale) private readonly saleRepo: Repository<Sale>,
+    @Optional()
+    @Inject(CARBOPUNTOS_CLIENT_TOKEN)
+    private readonly carbopuntosClient: CarbopuntosClient | null,
+    @Optional()
+    @Inject(CARBOPUNTOS_PENDING_TOKEN)
+    private readonly pendingService: CarbopuntosPendingService | null,
+  ) {}
 
   async createSale(dto: CreateSaleDto, user: User): Promise<Sale> {
     if (dto.saleNumber) {
@@ -36,11 +59,16 @@ export class SalesService {
       dto.saleNumber ??
       `SALE-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
+    const customerDni = dto.customerDni;
+
+    // Map from productId → puntaje, collected during the transaction.
+    const puntajeMap = new Map<number, number>();
+
     // Persist the sale and its children in one transaction, setting the
     // sale_id FK explicitly on each item/payment (do not rely on cascade —
     // a misconfigured cascade inserts children with a null sale_id).
-    return this.saleRepo.manager.transaction(async (manager) => {
-      const sale = await manager.save(
+    const sale = await this.saleRepo.manager.transaction(async (manager) => {
+      const created = await manager.save(
         manager.create(Sale, {
           saleNumber,
           user,
@@ -50,6 +78,7 @@ export class SalesService {
           paymentStatus: 'paid',
           notes: dto.notes ?? null,
           isCanceled: false,
+          customerDni: customerDni ?? null, // weak reference to hub customer (D20)
           ...(dto.createdAt ? { createdAt: dto.createdAt } : {}),
         }),
       );
@@ -57,9 +86,11 @@ export class SalesService {
       for (const itemDto of dto.items) {
         const product = await manager.findOne(Product, { where: { id: itemDto.productId } });
         if (!product) throw new NotFoundException(`Product ${itemDto.productId} not found`);
+        // Collect puntaje for later points calculation.
+        puntajeMap.set(product.id, product.puntaje ?? 0);
         await manager.save(
           manager.create(SaleItem, {
-            sale,
+            sale: created,
             product,
             quantity: itemDto.quantity,
             unitPrice: itemDto.unitPrice,
@@ -81,7 +112,7 @@ export class SalesService {
 
         await manager.save(
           manager.create(Payment, {
-            sale,
+            sale: created,
             paymentMethod: pm,
             amount: payDto.amount,
             grossAmount: gross,
@@ -94,11 +125,64 @@ export class SalesService {
       }
 
       const full = await manager.findOne(Sale, {
-        where: { id: sale.id },
+        where: { id: created.id },
         relations: ['user', 'items', 'items.product', 'payments', 'payments.paymentMethod'],
       });
-      return full ?? sale;
+      return full ?? created;
     });
+
+    // Best-effort: accrue points after sale is persisted (D1/RNF-04).
+    // Never blocks the sale if the hub is down.
+    await this.tryAccrue(sale, dto.items, customerDni, user, puntajeMap);
+
+    return sale;
+  }
+
+  /**
+   * Tries to accrue points in the hub. If the hub is unavailable, enqueues
+   * the operation for later retry (D16). Never throws — the sale is already saved.
+   */
+  private async tryAccrue(
+    sale: Sale,
+    items: Array<{ productId: number; quantity: number; unitPrice: number }>,
+    customerDni: string | undefined | null,
+    user: User,
+    puntajeMap: Map<number, number>,
+  ): Promise<void> {
+    if (!customerDni || !this.carbopuntosClient) return;
+
+    // Calculate total points: Σ (product.puntaje × quantity) (D3).
+    const totalPoints = items.reduce((sum, item) => {
+      return sum + (puntajeMap.get(item.productId) ?? 0) * item.quantity;
+    }, 0);
+
+    if (totalPoints <= 0) return; // No points to accrue
+
+    const idempotencyKey = `${sale.saleNumber}:accrual`;
+
+    try {
+      await this.carbopuntosClient.accrue({
+        customerDni,
+        points: totalPoints,
+        saleRef: sale.saleNumber,
+        userRef: String(user.id),
+        idempotencyKey,
+      });
+    } catch (err: unknown) {
+      // Both hub unavailability and unexpected errors enqueue for retry.
+      // The sale is NEVER blocked regardless of error type (D1/RNF-04).
+      this.logger.warn(
+        `Error accruing points for sale ${sale.saleNumber}: ${String(err)}. Enqueuing for retry.`,
+      );
+      await this.pendingService?.enqueue({
+        operation: 'accrue',
+        customerDni,
+        saleRef: sale.saleNumber,
+        points: totalPoints,
+        idempotencyKey,
+        userRef: String(user.id),
+      });
+    }
   }
 
   async syncSales(
@@ -184,6 +268,41 @@ export class SalesService {
     sale.cancelReason = reason;
     sale.canceledAt = new Date();
     sale.canceledBy = canceledBy;
-    return this.saleRepo.save(sale);
+    const saved = await this.saleRepo.save(sale);
+
+    // Best-effort: reverse points if sale had a customer (D5/C5).
+    await this.tryReverse(saved, canceledBy);
+
+    return saved;
+  }
+
+  /**
+   * Tries to reverse points in the hub. If the hub is unavailable, enqueues
+   * the reversal for later retry (D16). Never throws — cancellation is already saved.
+   */
+  private async tryReverse(sale: Sale, user: User): Promise<void> {
+    if (!sale.customerDni || !this.carbopuntosClient) return;
+
+    const idempotencyKey = `${sale.saleNumber}:reversal`;
+
+    try {
+      await this.carbopuntosClient.reverse({
+        customerDni: sale.customerDni,
+        saleRef: sale.saleNumber,
+        userRef: String(user.id),
+        idempotencyKey,
+      });
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Error reversing points for sale ${sale.saleNumber}: ${String(err)}. Enqueuing for retry.`,
+      );
+      await this.pendingService?.enqueue({
+        operation: 'reverse',
+        customerDni: sale.customerDni,
+        saleRef: sale.saleNumber,
+        idempotencyKey,
+        userRef: String(user.id),
+      });
+    }
   }
 }

@@ -12,9 +12,13 @@ import { CashReportService } from './services/cash-report.service';
 import { SalesResetService } from './services/sales-reset.service';
 import { SalesController } from './sales.controller';
 import { PaymentMethodController } from './payment-method.controller';
+import { CarbopuntosModule } from '../carbopuntos/carbopuntos.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PaymentMethod, Sale, SaleItem, Payment, Product, Expense])],
+  imports: [
+    TypeOrmModule.forFeature([PaymentMethod, Sale, SaleItem, Payment, Product, Expense]),
+    CarbopuntosModule,
+  ],
   providers: [SalesService, PaymentMethodService, CashReportService, SalesResetService],
   controllers: [SalesController, PaymentMethodController],
   exports: [SalesService, PaymentMethodService],
