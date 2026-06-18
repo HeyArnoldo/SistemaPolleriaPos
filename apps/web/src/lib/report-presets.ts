@@ -1,4 +1,4 @@
-import { subDays, subWeeks, subMonths, startOfDay, endOfDay, format } from 'date-fns';
+import { subDays, subWeeks, subMonths, format } from 'date-fns';
 
 export type ReportPreset =
   | 'today'
@@ -14,82 +14,46 @@ export interface ReportDateRange {
   endDate: string;
 }
 
-const GMT5_OFFSET_MS = -5 * 60 * 60 * 1000;
+// Lima calendar date (YYYY-MM-DD) for a given instant. The API expands these
+// date-only bounds to the full GMT-5 day, so the report covers the whole Lima
+// day instead of being cut off ~5h early (a datetime without offset was being
+// read as UTC server-side).
+const toLimaYmd = (d: Date): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(d);
 
-const toGMT5Date = (date: Date): Date => {
-  const utcMs = date.getTime() + date.getTimezoneOffset() * 60000;
-  return new Date(utcMs + GMT5_OFFSET_MS);
-};
-
-export const getTodayRangeInGMT5 = (): { start: Date; end: Date } => {
-  const nowGMT5 = toGMT5Date(new Date());
-  return {
-    start: startOfDay(nowGMT5),
-    end: endOfDay(nowGMT5),
-  };
-};
+// "Today" in Lima anchored at noon-Lima, safe for subDays/subWeeks/subMonths math.
+const limaTodayNoon = (): Date => new Date(`${toLimaYmd(new Date())}T12:00:00-05:00`);
 
 export const getReportDateParams = (
   preset: ReportPreset,
   customRange?: { from?: Date; to?: Date },
 ): ReportDateRange => {
-  const now = toGMT5Date(new Date());
-
   if (preset === 'custom' && customRange) {
-    const from = customRange.from ?? now;
-    const to = customRange.to ?? customRange.from ?? now;
-    return {
-      startDate: format(startOfDay(from), "yyyy-MM-dd'T'HH:mm:ss"),
-      endDate: format(endOfDay(to), "yyyy-MM-dd'T'HH:mm:ss"),
-    };
+    const from = customRange.from ?? customRange.to ?? new Date();
+    const to = customRange.to ?? customRange.from ?? from;
+    // from/to come from the calendar picker (local-midnight of the chosen day):
+    // take their calendar date as-is.
+    return { startDate: format(from, 'yyyy-MM-dd'), endDate: format(to, 'yyyy-MM-dd') };
   }
 
+  const now = limaTodayNoon();
+
   switch (preset) {
-    case 'today':
-      return {
-        startDate: format(startOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"),
-        endDate: format(endOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"),
-      };
     case 'yesterday': {
-      const yesterday = subDays(now, 1);
-      return {
-        startDate: format(startOfDay(yesterday), "yyyy-MM-dd'T'HH:mm:ss"),
-        endDate: format(endOfDay(yesterday), "yyyy-MM-dd'T'HH:mm:ss"),
-      };
+      const y = subDays(now, 1);
+      return { startDate: toLimaYmd(y), endDate: toLimaYmd(y) };
     }
-    case 'last7': {
-      const from = subDays(now, 6);
-      return {
-        startDate: format(startOfDay(from), "yyyy-MM-dd'T'HH:mm:ss"),
-        endDate: format(endOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"),
-      };
-    }
-    case 'last30': {
-      const from = subDays(now, 29);
-      return {
-        startDate: format(startOfDay(from), "yyyy-MM-dd'T'HH:mm:ss"),
-        endDate: format(endOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"),
-      };
-    }
-    case 'lastWeek': {
-      const from = subWeeks(now, 1);
-      return {
-        startDate: format(startOfDay(from), "yyyy-MM-dd'T'HH:mm:ss"),
-        endDate: format(endOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"),
-      };
-    }
-    case 'lastMonth': {
-      const from = subMonths(now, 1);
-      return {
-        startDate: format(startOfDay(from), "yyyy-MM-dd'T'HH:mm:ss"),
-        endDate: format(endOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"),
-      };
-    }
+    case 'last7':
+      return { startDate: toLimaYmd(subDays(now, 6)), endDate: toLimaYmd(now) };
+    case 'last30':
+      return { startDate: toLimaYmd(subDays(now, 29)), endDate: toLimaYmd(now) };
+    case 'lastWeek':
+      return { startDate: toLimaYmd(subWeeks(now, 1)), endDate: toLimaYmd(now) };
+    case 'lastMonth':
+      return { startDate: toLimaYmd(subMonths(now, 1)), endDate: toLimaYmd(now) };
+    case 'today':
     default:
-      return {
-        startDate: format(startOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"),
-        endDate: format(endOfDay(now), "yyyy-MM-dd'T'HH:mm:ss"),
-      };
+      return { startDate: toLimaYmd(now), endDate: toLimaYmd(now) };
   }
 };
 
