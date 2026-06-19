@@ -45,3 +45,21 @@ export const customerSearchSchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
 });
 export type CustomerSearchInput = z.infer<typeof customerSearchSchema>;
+
+// Query params for listing all customers (paginated, no text filter required).
+export const listCustomersQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().optional().default(50),
+  offset: z.coerce.number().int().min(0).optional().default(0),
+});
+export type ListCustomersQuery = z.infer<typeof listCustomersQuerySchema>;
+
+// Response shape for GET /customers — each item embeds the current balance.
+export const listCustomersResponseSchema = z.object({
+  items: z.array(
+    customerSchema.extend({
+      balance: z.number().int().min(0),
+    }),
+  ),
+  total: z.number().int().min(0),
+});
+export type ListCustomersResponse = z.infer<typeof listCustomersResponseSchema>;

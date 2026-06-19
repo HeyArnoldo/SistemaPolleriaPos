@@ -81,6 +81,7 @@ describe('CarbopuntosProxyController', () => {
       getHistory: jest.fn(),
       adjust: jest.fn(),
       voidMovement: jest.fn(),
+      listCustomers: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -101,6 +102,31 @@ describe('CarbopuntosProxyController', () => {
       .compile();
 
     controller = module.get<CarbopuntosProxyController>(CarbopuntosProxyController);
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /carbopuntos/customers — list (paginated, no text filter)
+  // -------------------------------------------------------------------------
+
+  describe('GET /carbopuntos/customers', () => {
+    it('calls client.listCustomers with parsed query params and returns { items, total }', async () => {
+      const listResult = { items: [fakeCustomer], total: 1 };
+      mockClient.listCustomers.mockResolvedValue(listResult);
+
+      // The ZodValidationPipe resolves defaults before the controller method is called.
+      const result = await controller.listCustomers({ limit: 50, offset: 0 });
+
+      expect(mockClient.listCustomers).toHaveBeenCalledWith({ limit: 50, offset: 0 });
+      expect(result).toEqual(listResult);
+    });
+
+    it('passes explicit limit and offset to client.listCustomers', async () => {
+      mockClient.listCustomers.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listCustomers({ limit: 10, offset: 20 });
+
+      expect(mockClient.listCustomers).toHaveBeenCalledWith({ limit: 10, offset: 20 });
+    });
   });
 
   // -------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import {
   // Contratos de entrada
   affiliateCustomerSchema,
   customerSearchSchema,
+  listCustomersQuerySchema,
   accrueSchema,
   redeemSchema,
   mixedOperationSchema,
@@ -14,10 +15,13 @@ import {
   customerSchema,
   balanceSchema,
   pointsMovementSchema,
+  listCustomersResponseSchema,
 } from '@app/carbopuntos-contracts';
 import type {
   AffiliateCustomerInput,
   CustomerSearchInput,
+  ListCustomersQuery,
+  ListCustomersResponse,
   AccrueInput,
   RedeemInput,
   MixedOperationInput,
@@ -81,6 +85,23 @@ export class CarbopuntosClient {
   // -------------------------------------------------------------------------
   // Métodos de clientes
   // -------------------------------------------------------------------------
+
+  /**
+   * Returns a paginated list of all customers with their current balances.
+   * Calls GET /customers with optional limit/offset query params.
+   */
+  async listCustomers(params: Partial<ListCustomersQuery> = {}): Promise<ListCustomersResponse> {
+    const query = listCustomersQuerySchema.parse(params);
+    // Only send params that were explicitly provided (omit defaults to keep URL clean).
+    const queryParams: Record<string, number> = {};
+    if (params.limit !== undefined) queryParams.limit = query.limit;
+    if (params.offset !== undefined) queryParams.offset = query.offset;
+
+    const { data } = await this.request(() =>
+      this.http.get<unknown>('/customers', { params: queryParams }),
+    );
+    return listCustomersResponseSchema.parse(data);
+  }
 
   /**
    * Busca un cliente por DNI o lo afilia si no existe.

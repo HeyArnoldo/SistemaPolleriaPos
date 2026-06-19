@@ -5,6 +5,7 @@ import { Customer } from '../entities/customer.entity';
 import { DniService } from './dni.service';
 import { PointsBalance } from '../../points/entities/points-balance.entity';
 import { PointsMovement } from '../../points/entities/points-movement.entity';
+import type { ListCustomersQuery } from '@app/carbopuntos-contracts';
 
 export interface AffiliateInput {
   dni: string;
@@ -77,6 +78,41 @@ export class CustomersService {
       this.logger.log(`Nuevo cliente afiliado: ${dniData.fullName} (DNI ${dniData.dni})`);
       return customer;
     });
+  }
+
+  /**
+   * Returns a paginated list of all customers, each enriched with their
+   * current balance. Ordered by created_at DESC.
+   */
+  async list(params: ListCustomersQuery): Promise<{
+    items: Array<Customer & { balance: number }>;
+    total: number;
+  }> {
+    const { limit, offset } = params;
+
+    const [customers, total] = await this.customerRepo.findAndCount({
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip: offset,
+    });
+
+    // Fetch balances for all customers in a single query.
+    const customerIds = customers.map((c) => c.id);
+    const balances =
+      customerIds.length > 0
+        ? await this.balanceRepo.find({
+            where: customerIds.map((id) => ({ customerId: id })),
+          })
+        : [];
+
+    const balanceMap = new Map(balances.map((b) => [b.customerId, b.balance]));
+
+    const items = customers.map((c) => ({
+      ...c,
+      balance: balanceMap.get(c.id) ?? 0,
+    }));
+
+    return { items, total };
   }
 
   /**
