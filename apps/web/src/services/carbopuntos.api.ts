@@ -13,11 +13,6 @@ export interface CustomerListResult {
   total: number;
 }
 
-export interface CustomerSearchResult {
-  customers: Customer[];
-  total: number;
-}
-
 export interface ListCustomersParams {
   limit?: number;
   offset?: number;

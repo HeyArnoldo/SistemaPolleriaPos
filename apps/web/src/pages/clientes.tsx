@@ -372,6 +372,7 @@ function CustomerDetail({ dni, onBack }: CustomerDetailProps) {
       {/* Back */}
       <button
         onClick={onBack}
+        aria-label="Volver a clientes"
         className="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1 mb-6"
       >
         <ArrowLeft className="w-4 h-4" /> Volver a clientes
@@ -466,6 +467,7 @@ function CustomerDetail({ dni, onBack }: CustomerDetailProps) {
                       setVoidOpen(true);
                     }}
                     title="Anular movimiento"
+                    aria-label="Anular movimiento"
                     className="ml-1 p-1 rounded hover:bg-red-50 text-destructive"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
