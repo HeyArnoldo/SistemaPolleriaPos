@@ -57,7 +57,10 @@ export const useAffiliateCustomer = () => {
     mutationFn: (payload: carbopuntosApi.AffiliateCustomerPayload) =>
       carbopuntosApi.affiliateCustomer(payload),
     onSuccess: (customer) => {
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customers() });
+      // Usamos la raíz literal `['carbopuntos-customers']` y no `QUERY_KEYS.customers()`:
+      // sin argumento esa factory devuelve `['carbopuntos-customers', undefined]`, y ese
+      // `undefined` final hace que partialMatchKey no matchee los queries de búsqueda reales.
+      void qc.invalidateQueries({ queryKey: ['carbopuntos-customers'] });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.customersList() });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.customer(customer.dni) });
     },
