@@ -244,6 +244,74 @@ describe('CarbopuntosClient — accrue', () => {
   });
 });
 
+describe('CarbopuntosClient — listCustomers', () => {
+  let mockAxiosInstance: Partial<AxiosInstance> & {
+    get: ReturnType<typeof vi.fn>;
+    post: ReturnType<typeof vi.fn>;
+  };
+  let client: CarbopuntosClient;
+
+  const fakeItem = {
+    id: '550e8400-e29b-41d4-a716-446655440001',
+    dni: '12345678',
+    firstName: 'Juan',
+    lastName: 'Pérez',
+    fullName: 'Juan Pérez',
+    phone: null,
+    consentAt: '2026-06-17T10:00:00-05:00',
+    isActive: true,
+    createdAt: '2026-06-17T10:00:00-05:00',
+    balance: 120,
+  };
+
+  beforeEach(() => {
+    mockAxiosInstance = { get: vi.fn(), post: vi.fn() };
+    vi.mocked(axios.create).mockReturnValue(mockAxiosInstance as unknown as AxiosInstance);
+    client = makeClient();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls GET /customers with no params when called without args', async () => {
+    mockAxiosInstance.get.mockResolvedValue({ data: { items: [fakeItem], total: 1 } });
+
+    const result = await client.listCustomers();
+
+    expect(mockAxiosInstance.get).toHaveBeenCalledWith('/customers', { params: {} });
+    expect(result.total).toBe(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.balance).toBe(120);
+  });
+
+  it('passes limit and offset as query params', async () => {
+    mockAxiosInstance.get.mockResolvedValue({ data: { items: [], total: 0 } });
+
+    await client.listCustomers({ limit: 10, offset: 20 });
+
+    expect(mockAxiosInstance.get).toHaveBeenCalledWith('/customers', {
+      params: { limit: 10, offset: 20 },
+    });
+  });
+
+  it('validates the response shape with listCustomersResponseSchema', async () => {
+    // Hub returns invalid shape (items missing balance) — should throw ZodError
+    mockAxiosInstance.get.mockResolvedValue({
+      data: { items: [{ ...fakeItem, balance: undefined }], total: 1 },
+    });
+
+    await expect(client.listCustomers()).rejects.toThrow();
+  });
+
+  it('throws CarbopuntosUnavailableError on network failure', async () => {
+    const networkErr = Object.assign(new Error('Network Error'), { code: 'ECONNREFUSED' });
+    mockAxiosInstance.get.mockRejectedValue(networkErr);
+
+    await expect(client.listCustomers()).rejects.toBeInstanceOf(CarbopuntosUnavailableError);
+  });
+});
+
 describe('CarbopuntosClient — lookupOrAffiliate', () => {
   let mockAxiosInstance: Partial<AxiosInstance> & {
     get: ReturnType<typeof vi.fn>;

@@ -1,6 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as carbopuntosApi from '@/services/carbopuntos.api';
+import type { ListCustomersParams } from '@/services/carbopuntos.api';
 import { QUERY_KEYS } from './query-keys';
+
+// ─── List all customers (admin page, no query required) ───────────────────────
+
+/**
+ * Fetches the full paginated customer list on mount — no search text needed.
+ * Used by the admin "Clientes" page to populate the table immediately.
+ */
+export const useListCustomers = (params: ListCustomersParams = {}) =>
+  useQuery({
+    queryKey: ['carbopuntos-customers-list', params] as const,
+    queryFn: () => carbopuntosApi.listCustomers(params),
+    staleTime: 30_000,
+  });
 
 // ─── Lookup / search ──────────────────────────────────────────────────────────
 

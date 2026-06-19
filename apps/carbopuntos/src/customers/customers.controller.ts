@@ -15,8 +15,10 @@ import { CustomersService } from './services/customers.service';
 import {
   affiliateCustomerSchema,
   customerSearchSchema,
+  listCustomersQuerySchema,
   type AffiliateCustomerInput,
   type CustomerSearchInput,
+  type ListCustomersQuery,
 } from '@app/carbopuntos-contracts';
 
 /**
@@ -36,6 +38,20 @@ import {
 @Controller('customers')
 export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
+
+  /**
+   * GET /customers — paginated list of all customers with embedded balance.
+   * Ordered by created_at DESC. No text filter required (for admin list view).
+   *
+   * IMPORTANT: declared before /:dni so NestJS does not treat "search" as a DNI.
+   */
+  @Get()
+  async list(
+    @Query(new ZodValidationPipe(listCustomersQuerySchema)) query: ListCustomersQuery,
+    @CurrentSede() _sede: string,
+  ) {
+    return this.customersService.list(query);
+  }
 
   @Post()
   async affiliate(

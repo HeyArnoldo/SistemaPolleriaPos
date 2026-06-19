@@ -5,7 +5,17 @@ import { Customer } from './entities/customer.entity';
 import { PointsBalance } from '../points/entities/points-balance.entity';
 
 function makeCustomer(): Customer {
-  return { id: 'a1b2', dni: '12345678' } as Customer;
+  return {
+    id: 'a1b2',
+    dni: '12345678',
+    firstName: 'Juan',
+    lastName: 'Perez',
+    fullName: 'Juan Perez',
+    phone: null,
+    consentAt: new Date('2026-01-01T00:00:00.000Z'),
+    isActive: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  } as Customer;
 }
 
 function makeBalance(): PointsBalance {
@@ -20,11 +30,45 @@ function makeBalance(): PointsBalance {
 
 describe('CustomersController', () => {
   let controller: CustomersController;
-  let service: { findByDni: jest.Mock };
+  let service: { findByDni: jest.Mock; list: jest.Mock };
 
   beforeEach(() => {
-    service = { findByDni: jest.fn() };
+    service = { findByDni: jest.fn(), list: jest.fn() };
     controller = new CustomersController(service as unknown as CustomersService);
+  });
+
+  // ── GET /customers (list) ────────────────────────────────────────────────
+
+  describe('list', () => {
+    it('calls service.list with default params when no query is passed', async () => {
+      const listResult = {
+        items: [{ ...makeCustomer(), balance: 120 }],
+        total: 1,
+      };
+      service.list.mockResolvedValue(listResult);
+
+      const result = await controller.list({ limit: 50, offset: 0 }, 'pisac');
+
+      expect(service.list).toHaveBeenCalledWith({ limit: 50, offset: 0 });
+      expect(result).toEqual(listResult);
+    });
+
+    it('passes explicit limit/offset to service.list', async () => {
+      service.list.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.list({ limit: 10, offset: 20 }, 'pisac');
+
+      expect(service.list).toHaveBeenCalledWith({ limit: 10, offset: 20 });
+    });
+
+    it('returns { items, total } structure', async () => {
+      service.list.mockResolvedValue({ items: [], total: 0 });
+
+      const result = await controller.list({ limit: 50, offset: 0 }, 'pisac');
+
+      expect(result).toHaveProperty('items');
+      expect(result).toHaveProperty('total');
+    });
   });
 
   describe('getBalance (Fix #7)', () => {

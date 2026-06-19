@@ -36,6 +36,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  useListCustomers,
   useSearchCustomers,
   useGetCustomer,
   useGetCustomerHistory,
@@ -515,16 +516,73 @@ function CustomerDetail({ dni, onBack }: CustomerDetailProps) {
   );
 }
 
+// ─── CustomerTable ────────────────────────────────────────────────────────────
+
+interface CustomerTableProps {
+  customers: Customer[];
+  onSelect: (dni: string) => void;
+}
+
+function CustomerTable({ customers, onSelect }: CustomerTableProps) {
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nombre</TableHead>
+              <TableHead>DNI</TableHead>
+              <TableHead>Teléfono</TableHead>
+              <TableHead>Registrado</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {customers.map((c: Customer) => (
+              <TableRow
+                key={c.id}
+                className="cursor-pointer hover:bg-slate-50"
+                onClick={() => onSelect(c.dni)}
+              >
+                <TableCell className="font-medium">{c.fullName}</TableCell>
+                <TableCell className="font-mono text-sm">{c.dni}</TableCell>
+                <TableCell className="text-slate-500">{c.phone ?? '—'}</TableCell>
+                <TableCell className="text-xs text-slate-500">
+                  {new Date(c.createdAt).toLocaleDateString('es-PE')}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={c.isActive ? 'default' : 'secondary'}>
+                    {c.isActive ? 'Activo' : 'Inactivo'}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── ClientesPage ─────────────────────────────────────────────────────────────
 
 export default function ClientesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDni, setSelectedDni] = useState<string | null>(null);
 
-  const { data: customers = [], isLoading } = useSearchCustomers(
+  // Default list — loaded on mount, no text filter required.
+  const { data: listData, isLoading: listLoading } = useListCustomers();
+
+  // Server-side search — active only when the user types something.
+  const isSearching = searchQuery.length >= 1;
+  const { data: searchResults = [], isLoading: searchLoading } = useSearchCustomers(
     searchQuery,
-    searchQuery.length >= 1,
+    isSearching,
   );
+
+  // Show list or search results based on whether the user has typed anything.
+  const customers: Customer[] = isSearching ? searchResults : (listData?.items ?? []);
+  const isLoading = isSearching ? searchLoading : listLoading;
 
   if (selectedDni) {
     return (
@@ -553,7 +611,7 @@ export default function ClientesPage() {
       <div className="relative max-w-lg">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Buscar por DNI, nombre o teléfono..."
+          placeholder="Filtrar por DNI, nombre o teléfono..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
@@ -561,57 +619,24 @@ export default function ClientesPage() {
       </div>
 
       {/* Results */}
-      {searchQuery.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <UserCheck className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          <p>Escribe un DNI, nombre o teléfono para buscar clientes.</p>
-        </div>
-      ) : isLoading ? (
+      {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : customers.length === 0 ? (
-        <div className="flex items-center gap-2 py-8 text-slate-500">
-          <AlertCircle className="h-4 w-4" />
-          No se encontraron clientes para "{searchQuery}".
-        </div>
+        isSearching ? (
+          <div className="flex items-center gap-2 py-8 text-slate-500">
+            <AlertCircle className="h-4 w-4" />
+            No se encontraron clientes para &quot;{searchQuery}&quot;.
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 py-8 text-slate-500">
+            <AlertCircle className="h-4 w-4" />
+            No hay clientes registrados aún.
+          </div>
+        )
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>DNI</TableHead>
-                  <TableHead>Teléfono</TableHead>
-                  <TableHead>Registrado</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {customers.map((c: Customer) => (
-                  <TableRow
-                    key={c.id}
-                    className="cursor-pointer hover:bg-slate-50"
-                    onClick={() => setSelectedDni(c.dni)}
-                  >
-                    <TableCell className="font-medium">{c.fullName}</TableCell>
-                    <TableCell className="font-mono text-sm">{c.dni}</TableCell>
-                    <TableCell className="text-slate-500">{c.phone ?? '—'}</TableCell>
-                    <TableCell className="text-xs text-slate-500">
-                      {new Date(c.createdAt).toLocaleDateString('es-PE')}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={c.isActive ? 'default' : 'secondary'}>
-                        {c.isActive ? 'Activo' : 'Inactivo'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <CustomerTable customers={customers} onSelect={setSelectedDni} />
       )}
     </div>
   );

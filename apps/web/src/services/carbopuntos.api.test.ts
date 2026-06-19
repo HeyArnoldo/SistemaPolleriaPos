@@ -22,6 +22,7 @@ import {
   affiliateCustomer,
   adjustPoints,
   voidMovement,
+  listCustomers,
 } from '@/services/carbopuntos.api';
 import type { Customer, PointsMovement } from '@app/carbopuntos-contracts';
 
@@ -164,6 +165,40 @@ describe('adjustPoints', () => {
       reason: 'Test adjustment',
     });
     expect(result).toEqual(movement);
+  });
+});
+
+// ─── listCustomers ────────────────────────────────────────────────────────────
+
+describe('listCustomers', () => {
+  it('calls GET /carbopuntos/customers with no params by default', async () => {
+    const mockResponse = { items: [makeCustomer()], total: 1 };
+    mockApi.get.mockResolvedValue({ data: mockResponse });
+
+    const result = await listCustomers();
+
+    expect(mockApi.get).toHaveBeenCalledWith('/carbopuntos/customers', { params: {} });
+    expect(result.total).toBe(1);
+    expect(result.items).toHaveLength(1);
+  });
+
+  it('passes limit and offset when provided', async () => {
+    mockApi.get.mockResolvedValue({ data: { items: [], total: 0 } });
+
+    await listCustomers({ limit: 20, offset: 40 });
+
+    expect(mockApi.get).toHaveBeenCalledWith('/carbopuntos/customers', {
+      params: { limit: 20, offset: 40 },
+    });
+  });
+
+  it('returns { items, total } shape', async () => {
+    mockApi.get.mockResolvedValue({ data: { items: [], total: 0 } });
+
+    const result = await listCustomers();
+
+    expect(result).toHaveProperty('items');
+    expect(result).toHaveProperty('total');
   });
 });
 

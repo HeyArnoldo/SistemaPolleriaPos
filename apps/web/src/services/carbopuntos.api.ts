@@ -8,10 +8,31 @@ import type { Customer, PointsMovement } from '@app/carbopuntos-contracts';
 
 // ─── Customer endpoints ───────────────────────────────────────────────────────
 
+export interface CustomerListResult {
+  items: (Customer & { balance: number })[];
+  total: number;
+}
+
 export interface CustomerSearchResult {
   customers: Customer[];
   total: number;
 }
+
+export interface ListCustomersParams {
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Fetches a paginated list of all customers with embedded balances.
+ * Used by the admin "Clientes" page to show customers without a search query.
+ */
+export const listCustomers = async (
+  params: ListCustomersParams = {},
+): Promise<CustomerListResult> => {
+  const { data } = await api.get<CustomerListResult>('/carbopuntos/customers', { params });
+  return data;
+};
 
 export const searchCustomers = async (q: string): Promise<Customer[]> => {
   const { data } = await api.get<Customer[]>('/carbopuntos/customers/search', {

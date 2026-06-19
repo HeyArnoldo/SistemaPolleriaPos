@@ -13,8 +13,13 @@ import {
   affiliateCustomerSchema,
   adjustSchema,
   voidMovementSchema,
+  listCustomersQuerySchema,
 } from '@app/carbopuntos-contracts';
-import type { CustomerSearchInput, AffiliateCustomerInput } from '@app/carbopuntos-contracts';
+import type {
+  CustomerSearchInput,
+  AffiliateCustomerInput,
+  ListCustomersQuery,
+} from '@app/carbopuntos-contracts';
 import { z } from 'zod';
 
 // Partial body schemas for admin operations (userRef injected server-side from JWT).
@@ -37,6 +42,23 @@ export class CarbopuntosProxyController {
     @Inject(CARBOPUNTOS_CLIENT_TOKEN)
     private readonly client: CarbopuntosClient,
   ) {}
+
+  // ---------------------------------------------------------------------------
+  // Customer list (paginated, no text filter) — must be declared FIRST so NestJS
+  // does not confuse the literal "customers" segment with the "/:dni" param route.
+  // Route order: GET customers → GET customers/search → GET customers/:dni
+  // ---------------------------------------------------------------------------
+
+  /**
+   * GET /api/carbopuntos/customers
+   *
+   * Returns a paginated list of all customers with embedded balances.
+   * Used by the admin "Clientes" page to show the list without requiring a search query.
+   */
+  @Get('customers')
+  listCustomers(@Query(new ZodValidationPipe(listCustomersQuerySchema)) query: ListCustomersQuery) {
+    return this.client.listCustomers(query);
+  }
 
   // ---------------------------------------------------------------------------
   // Customer lookup / search
