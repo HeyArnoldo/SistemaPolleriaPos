@@ -34,10 +34,11 @@ export const listCustomers = async (
   return data;
 };
 
-export const searchCustomers = async (q: string): Promise<Customer[]> => {
-  const { data } = await api.get<Customer[]>('/carbopuntos/customers/search', {
-    params: { q },
-  });
+export const searchCustomers = async (q: string): Promise<(Customer & { balance: number })[]> => {
+  const { data } = await api.get<(Customer & { balance: number })[]>(
+    '/carbopuntos/customers/search',
+    { params: { q } },
+  );
   return data;
 };
 

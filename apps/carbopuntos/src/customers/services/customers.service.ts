@@ -119,14 +119,31 @@ export class CustomersService {
 
   /**
    * Busca clientes por nombre completo o DNI parcial.
+   * Cada resultado incluye el saldo actual (mismo patrón que list).
    * Límite configurable; default 20.
    */
-  async search(q: string, limit = 20): Promise<Customer[]> {
-    return this.customerRepo.find({
+  async search(q: string, limit = 20): Promise<Array<Customer & { balance: number }>> {
+    const customers = await this.customerRepo.find({
       where: [{ fullName: ILike(`%${q}%`) }, { dni: ILike(`%${q}%`) }],
       order: { createdAt: 'DESC' },
       take: limit,
     });
+
+    // Short-circuit on an empty result: `In([])` can yield invalid/unsafe SQL.
+    const customerIds = customers.map((c) => c.id);
+    const balances =
+      customerIds.length > 0
+        ? await this.balanceRepo.find({
+            where: { customerId: In(customerIds) },
+          })
+        : [];
+
+    const balanceMap = new Map(balances.map((b) => [b.customerId, b.balance]));
+
+    return customers.map((c) => ({
+      ...c,
+      balance: balanceMap.get(c.id) ?? 0,
+    }));
   }
 
   /**

@@ -66,13 +66,19 @@ export const listCustomersQuerySchema = z.object({
 });
 export type ListCustomersQuery = z.infer<typeof listCustomersQuerySchema>;
 
+// Shared item shape for both list and search endpoints — customer + embedded balance.
+export const customerWithBalanceSchema = customerSchema.extend({
+  balance: z.number().int().min(0),
+});
+export type CustomerWithBalance = z.infer<typeof customerWithBalanceSchema>;
+
 // Response shape for GET /customers — each item embeds the current balance.
 export const listCustomersResponseSchema = z.object({
-  items: z.array(
-    customerSchema.extend({
-      balance: z.number().int().min(0),
-    }),
-  ),
+  items: z.array(customerWithBalanceSchema),
   total: z.number().int().min(0),
 });
 export type ListCustomersResponse = z.infer<typeof listCustomersResponseSchema>;
+
+// Response shape for GET /customers/search — array of customers with embedded balance.
+export const searchCustomersResponseSchema = z.array(customerWithBalanceSchema);
+export type SearchCustomersResponse = z.infer<typeof searchCustomersResponseSchema>;

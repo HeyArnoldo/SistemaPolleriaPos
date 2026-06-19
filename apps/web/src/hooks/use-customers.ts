@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as carbopuntosApi from '@/services/carbopuntos.api';
 import type { ListCustomersParams } from '@/services/carbopuntos.api';
 import { QUERY_KEYS } from './query-keys';
+import type { Customer } from '@app/carbopuntos-contracts';
 
 // ─── List all customers (admin page, no query required) ───────────────────────
 
@@ -19,7 +20,7 @@ export const useListCustomers = (params: ListCustomersParams = {}) =>
 // ─── Lookup / search ──────────────────────────────────────────────────────────
 
 export const useSearchCustomers = (q: string, enabled = true) =>
-  useQuery({
+  useQuery<(Customer & { balance: number })[]>({
     queryKey: QUERY_KEYS.customers(q),
     queryFn: () => carbopuntosApi.searchCustomers(q),
     enabled: enabled && q.length >= 1,

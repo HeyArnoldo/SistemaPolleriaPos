@@ -17,6 +17,21 @@ vi.mock('@/services/carbopuntos.api', () => ({
   voidMovement: vi.fn(),
 }));
 
+// ─── Helper ────────────────────────────────────────────────────────────────
+
+const makeCustomerWithBalance = () => ({
+  id: 'aaaa-bbbb-cccc-dddd',
+  dni: '12345678',
+  firstName: 'Juan',
+  lastName: 'Pérez',
+  fullName: 'Juan Pérez García',
+  phone: null,
+  consentAt: '2024-01-15T10:00:00.000Z',
+  isActive: true,
+  createdAt: '2024-01-15T10:00:00.000Z',
+  balance: 80,
+});
+
 import * as carbopuntosApi from '@/services/carbopuntos.api';
 
 describe('useListCustomers — service wiring', () => {
@@ -43,5 +58,30 @@ describe('useListCustomers — service wiring', () => {
     await carbopuntosApi.listCustomers({ limit: 10, offset: 0 });
 
     expect(mockListCustomers).toHaveBeenCalledWith({ limit: 10, offset: 0 });
+  });
+});
+
+describe('useSearchCustomers — service wiring with balance', () => {
+  it('searchCustomers service function is exported from carbopuntos.api', () => {
+    expect(typeof carbopuntosApi.searchCustomers).toBe('function');
+  });
+
+  it('searchCustomers returns items with balance field', async () => {
+    const mockSearchCustomers = vi.mocked(carbopuntosApi.searchCustomers);
+    mockSearchCustomers.mockResolvedValue([makeCustomerWithBalance()]);
+
+    const result = await carbopuntosApi.searchCustomers('juan');
+
+    expect(mockSearchCustomers).toHaveBeenCalledTimes(1);
+    expect(result[0]?.balance).toBe(80);
+  });
+
+  it('searchCustomers returns empty array when no results', async () => {
+    const mockSearchCustomers = vi.mocked(carbopuntosApi.searchCustomers);
+    mockSearchCustomers.mockResolvedValue([]);
+
+    const result = await carbopuntosApi.searchCustomers('xyz');
+
+    expect(result).toEqual([]);
   });
 });

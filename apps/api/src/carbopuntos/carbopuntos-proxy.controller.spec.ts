@@ -135,20 +135,30 @@ describe('CarbopuntosProxyController', () => {
 
   describe('GET /carbopuntos/customers/search', () => {
     it('calls client.search and returns the result', async () => {
-      mockClient.search.mockResolvedValue([fakeCustomer]);
+      const fakeCustomerWithBalance = { ...fakeCustomer, balance: 80 };
+      mockClient.search.mockResolvedValue([fakeCustomerWithBalance]);
 
       const result = await controller.searchCustomers({ q: 'Juan' });
 
       expect(mockClient.search).toHaveBeenCalledWith({ q: 'Juan' });
-      expect(result).toEqual([fakeCustomer]);
+      expect(result).toEqual([fakeCustomerWithBalance]);
     });
 
     it('passes limit and offset query params to client.search', async () => {
-      mockClient.search.mockResolvedValue([fakeCustomer]);
+      mockClient.search.mockResolvedValue([{ ...fakeCustomer, balance: 80 }]);
 
       await controller.searchCustomers({ q: 'Juan', limit: 10, offset: 0 });
 
       expect(mockClient.search).toHaveBeenCalledWith({ q: 'Juan', limit: 10, offset: 0 });
+    });
+
+    it('each search result includes a balance field from the hub', async () => {
+      const fakeCustomerWithBalance = { ...fakeCustomer, balance: 150 };
+      mockClient.search.mockResolvedValue([fakeCustomerWithBalance]);
+
+      const result = await controller.searchCustomers({ q: 'Juan' });
+
+      expect((result as Array<typeof fakeCustomerWithBalance>)[0]?.balance).toBe(150);
     });
   });
 
@@ -158,8 +168,9 @@ describe('CarbopuntosProxyController', () => {
 
   describe('GET /carbopuntos/customers/:dni', () => {
     it('calls getBalance + search and returns { dni, balance, customer }', async () => {
+      const fakeCustomerWithBalance = { ...fakeCustomer, balance: 80 };
       mockClient.getBalance.mockResolvedValue(fakeBalance);
-      mockClient.search.mockResolvedValue([fakeCustomer]);
+      mockClient.search.mockResolvedValue([fakeCustomerWithBalance]);
 
       const result = await controller.getCustomerByDni('12345678');
 
@@ -168,7 +179,7 @@ describe('CarbopuntosProxyController', () => {
       expect(result).toEqual({
         dni: '12345678',
         balance: fakeBalance.balance,
-        customer: fakeCustomer,
+        customer: fakeCustomerWithBalance,
       });
     });
 
