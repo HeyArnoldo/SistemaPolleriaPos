@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as carbopuntosApi from '@/services/carbopuntos.api';
 import type { ListCustomersParams } from '@/services/carbopuntos.api';
-import { QUERY_KEYS } from './query-keys';
+import { QUERY_KEYS, invalidateCustomerPointsQueries } from './query-keys';
 import type { Customer } from '@app/carbopuntos-contracts';
 
 // ─── List all customers (admin page, no query required) ───────────────────────
@@ -12,7 +12,7 @@ import type { Customer } from '@app/carbopuntos-contracts';
  */
 export const useListCustomers = (params: ListCustomersParams = {}) =>
   useQuery({
-    queryKey: ['carbopuntos-customers-list', params] as const,
+    queryKey: [...QUERY_KEYS.customersList(), params] as const,
     queryFn: () => carbopuntosApi.listCustomers(params),
     staleTime: 30_000,
   });
@@ -58,6 +58,7 @@ export const useAffiliateCustomer = () => {
       carbopuntosApi.affiliateCustomer(payload),
     onSuccess: (customer) => {
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.customers() });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customersList() });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.customer(customer.dni) });
     },
   });
@@ -69,10 +70,7 @@ export const useAdjustPoints = () => {
     mutationFn: ({ dni, payload }: { dni: string; payload: carbopuntosApi.AdjustPointsPayload }) =>
       carbopuntosApi.adjustPoints(dni, payload),
     onSuccess: (_result, { dni }) => {
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customer(dni) });
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customerHistory(dni) });
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customerBalance(dni) });
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customers() });
+      invalidateCustomerPointsQueries(qc, dni);
     },
   });
 };
@@ -84,10 +82,7 @@ export const useVoidMovement = () => {
       carbopuntosApi.voidMovement(movementId, reason),
     onSuccess: () => {
       // Invalidate all customer-related queries since we don't know which customer
-      void qc.invalidateQueries({ queryKey: ['carbopuntos-customer'] });
-      void qc.invalidateQueries({ queryKey: ['carbopuntos-customer-history'] });
-      void qc.invalidateQueries({ queryKey: ['carbopuntos-customer-balance'] });
-      void qc.invalidateQueries({ queryKey: ['carbopuntos-customers'] });
+      invalidateCustomerPointsQueries(qc);
     },
   });
 };

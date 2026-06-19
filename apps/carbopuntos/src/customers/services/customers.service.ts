@@ -118,13 +118,15 @@ export class CustomersService {
   }
 
   /**
-   * Busca clientes por nombre completo o DNI parcial.
+   * Busca clientes por nombre completo, DNI o teléfono parcial.
    * Cada resultado incluye el saldo actual (mismo patrón que list).
+   * El OR por teléfono honra el placeholder de la UI ("Buscar por DNI, nombre
+   * o teléfono"). Un phone null simplemente no matchea con ILike.
    * Límite configurable; default 20.
    */
   async search(q: string, limit = 20): Promise<Array<Customer & { balance: number }>> {
     const customers = await this.customerRepo.find({
-      where: [{ fullName: ILike(`%${q}%`) }, { dni: ILike(`%${q}%`) }],
+      where: [{ fullName: ILike(`%${q}%`) }, { dni: ILike(`%${q}%`) }, { phone: ILike(`%${q}%`) }],
       order: { createdAt: 'DESC' },
       take: limit,
     });

@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { In, Repository } from 'typeorm';
+import { ILike, In, Repository } from 'typeorm';
 import { CustomersService } from './customers.service';
 import { Customer } from '../entities/customer.entity';
 import { DniService, DniLookupResult } from './dni.service';
@@ -132,6 +132,19 @@ describe('CustomersService', () => {
 
       expect(result).toEqual([]);
       expect(balanceRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('debe incluir un OR por teléfono en el where (el placeholder promete buscar por teléfono)', async () => {
+      customerRepo.find.mockResolvedValue([]);
+
+      await service.search('999');
+
+      const callArg = customerRepo.find.mock.calls[0]?.[0];
+      const where = callArg?.where as Array<Record<string, unknown>>;
+      // El where es un array de condiciones OR; una de ellas debe matchear por phone.
+      const hasPhoneClause = where.some((clause) => 'phone' in clause);
+      expect(hasPhoneClause).toBe(true);
+      expect(where).toEqual(expect.arrayContaining([{ phone: ILike('%999%') }]));
     });
   });
 

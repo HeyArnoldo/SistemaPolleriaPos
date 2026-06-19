@@ -5,6 +5,8 @@
  * and is enabled on mount (no query string required).
  */
 import { describe, it, expect, vi } from 'vitest';
+import type { QueryClient } from '@tanstack/react-query';
+import { invalidateCustomerPointsQueries, QUERY_KEYS } from './query-keys';
 
 // Mock the service module before any imports that resolve it.
 vi.mock('@/services/carbopuntos.api', () => ({
@@ -83,5 +85,62 @@ describe('useSearchCustomers — service wiring with balance', () => {
     const result = await carbopuntosApi.searchCustomers('xyz');
 
     expect(result).toEqual([]);
+  });
+});
+
+describe('invalidateCustomerPointsQueries — list + search invalidation', () => {
+  const makeQc = () =>
+    ({ invalidateQueries: vi.fn() }) as unknown as QueryClient & {
+      invalidateQueries: ReturnType<typeof vi.fn>;
+    };
+
+  const calledWithKey = (
+    qc: { invalidateQueries: ReturnType<typeof vi.fn> },
+    key: readonly unknown[],
+  ) =>
+    qc.invalidateQueries.mock.calls.some(
+      ([arg]) => JSON.stringify((arg as { queryKey: unknown[] })?.queryKey) === JSON.stringify(key),
+    );
+
+  it('invalidates the admin LIST key (carbopuntos-customers-list) after an adjust', () => {
+    const qc = makeQc();
+
+    // Simulates what useAdjustPoints.onSuccess does for a known dni.
+    invalidateCustomerPointsQueries(qc, '12345678');
+
+    expect(calledWithKey(qc, QUERY_KEYS.customersList())).toBe(true);
+  });
+
+  it('still invalidates the SEARCH key (carbopuntos-customers) after an adjust', () => {
+    const qc = makeQc();
+
+    invalidateCustomerPointsQueries(qc, '12345678');
+
+    expect(calledWithKey(qc, QUERY_KEYS.customers())).toBe(true);
+  });
+
+  it('invalidates the customer DETAIL key after an adjust', () => {
+    const qc = makeQc();
+
+    invalidateCustomerPointsQueries(qc, '12345678');
+
+    expect(calledWithKey(qc, QUERY_KEYS.customer('12345678'))).toBe(true);
+  });
+
+  it('invalidates the admin LIST key after a void (no dni known)', () => {
+    const qc = makeQc();
+
+    // Simulates what useVoidMovement.onSuccess does when the customer is unknown.
+    invalidateCustomerPointsQueries(qc);
+
+    expect(calledWithKey(qc, QUERY_KEYS.customersList())).toBe(true);
+  });
+
+  it('still invalidates the SEARCH key after a void', () => {
+    const qc = makeQc();
+
+    invalidateCustomerPointsQueries(qc);
+
+    expect(calledWithKey(qc, QUERY_KEYS.customers())).toBe(true);
   });
 });
