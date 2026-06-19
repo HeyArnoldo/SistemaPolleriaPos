@@ -45,6 +45,49 @@ describe('listCustomersQuerySchema', () => {
     const result = listCustomersQuerySchema.safeParse({ limit: 0 });
     expect(result.success).toBe(false);
   });
+
+  it('accepts limit at the exact max cap (100)', () => {
+    const result = listCustomersQuerySchema.safeParse({ limit: 100 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.limit).toBe(100);
+    }
+  });
+
+  it('rejects limit above the max cap', () => {
+    const result = listCustomersQuerySchema.safeParse({ limit: 101 });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an absurdly large limit (no unbounded page size)', () => {
+    const result = listCustomersQuerySchema.safeParse({ limit: 100000000 });
+    expect(result.success).toBe(false);
+  });
+
+  it('treats empty-string limit as absent (uses default 50)', () => {
+    const result = listCustomersQuerySchema.safeParse({ limit: '' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.limit).toBe(50);
+    }
+  });
+
+  it('treats empty-string offset as absent (uses default 0)', () => {
+    const result = listCustomersQuerySchema.safeParse({ offset: '' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.offset).toBe(0);
+    }
+  });
+
+  it('treats both empty-string params as absent (defaults)', () => {
+    const result = listCustomersQuerySchema.safeParse({ limit: '', offset: '' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.limit).toBe(50);
+      expect(result.data.offset).toBe(0);
+    }
+  });
 });
 
 describe('listCustomersResponseSchema', () => {

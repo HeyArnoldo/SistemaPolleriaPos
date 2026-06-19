@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { ILike, In, Repository } from 'typeorm';
 import { Customer } from '../entities/customer.entity';
 import { DniService } from './dni.service';
 import { PointsBalance } from '../../points/entities/points-balance.entity';
@@ -98,10 +98,12 @@ export class CustomersService {
 
     // Fetch balances for all customers in a single query.
     const customerIds = customers.map((c) => c.id);
+    // Short-circuit on an empty page: `In([])` can yield invalid/unsafe SQL
+    // depending on the driver, and there is nothing to look up anyway.
     const balances =
       customerIds.length > 0
         ? await this.balanceRepo.find({
-            where: customerIds.map((id) => ({ customerId: id })),
+            where: { customerId: In(customerIds) },
           })
         : [];
 
