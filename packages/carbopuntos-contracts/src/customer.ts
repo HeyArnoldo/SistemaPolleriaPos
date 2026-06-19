@@ -46,10 +46,23 @@ export const customerSearchSchema = z.object({
 });
 export type CustomerSearchInput = z.infer<typeof customerSearchSchema>;
 
+// Maximum page size for the list endpoint — guards against unbounded reads.
+export const LIST_CUSTOMERS_MAX_LIMIT = 100;
+
+// Coerce empty-string query params (e.g. `?limit=`) to undefined so they fall
+// back to the schema default instead of coercing to 0.
+const emptyStringToUndefined = (value: unknown) => (value === '' ? undefined : value);
+
 // Query params for listing all customers (paginated, no text filter required).
 export const listCustomersQuerySchema = z.object({
-  limit: z.coerce.number().int().positive().optional().default(50),
-  offset: z.coerce.number().int().min(0).optional().default(0),
+  limit: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().max(LIST_CUSTOMERS_MAX_LIMIT).optional().default(50),
+  ),
+  offset: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().min(0).optional().default(0),
+  ),
 });
 export type ListCustomersQuery = z.infer<typeof listCustomersQuerySchema>;
 

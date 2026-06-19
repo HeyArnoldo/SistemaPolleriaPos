@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CustomersService } from './customers.service';
 import { Customer } from '../entities/customer.entity';
 import { DniService, DniLookupResult } from './dni.service';
@@ -11,6 +11,7 @@ function makeRepo<T extends Record<string, any>>(): jest.Mocked<Repository<T>> {
   return {
     findOne: jest.fn(),
     find: jest.fn(),
+    findAndCount: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
     manager: {
@@ -101,6 +102,52 @@ describe('CustomersService', () => {
 
       expect(result).toBe(customers);
       expect(customerRepo.find).toHaveBeenCalled();
+    });
+  });
+
+  // ── list ──────────────────────────────────────────────────────────────────
+
+  describe('list', () => {
+    it('debe enriquecer cada cliente con su saldo usando un único IN para los balances', async () => {
+      const customers = [
+        { id: 'uuid-1', dni: '11111111' },
+        { id: 'uuid-2', dni: '22222222' },
+      ] as Customer[];
+      (customerRepo.findAndCount as jest.Mock).mockResolvedValue([customers, 2]);
+      balanceRepo.find.mockResolvedValue([
+        { customerId: 'uuid-1', balance: 150 },
+        { customerId: 'uuid-2', balance: 0 },
+      ] as PointsBalance[]);
+
+      const result = await service.list({ limit: 50, offset: 0 });
+
+      expect(result.total).toBe(2);
+      expect(result.items[0].balance).toBe(150);
+      expect(result.items[1].balance).toBe(0);
+      // Una sola query con IN, no un OR por cada id.
+      expect(balanceRepo.find).toHaveBeenCalledWith({
+        where: { customerId: In(['uuid-1', 'uuid-2']) },
+      });
+    });
+
+    it('debe caer a balance 0 cuando no hay registro de saldo', async () => {
+      const customers = [{ id: 'uuid-1', dni: '11111111' }] as Customer[];
+      (customerRepo.findAndCount as jest.Mock).mockResolvedValue([customers, 1]);
+      balanceRepo.find.mockResolvedValue([]);
+
+      const result = await service.list({ limit: 50, offset: 0 });
+
+      expect(result.items[0].balance).toBe(0);
+    });
+
+    it('no debe consultar balances cuando la lista de clientes es vacía', async () => {
+      (customerRepo.findAndCount as jest.Mock).mockResolvedValue([[], 0]);
+
+      const result = await service.list({ limit: 50, offset: 0 });
+
+      expect(result.items).toEqual([]);
+      expect(result.total).toBe(0);
+      expect(balanceRepo.find).not.toHaveBeenCalled();
     });
   });
 
