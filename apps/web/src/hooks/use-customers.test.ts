@@ -5,8 +5,8 @@
  * and is enabled on mount (no query string required).
  */
 import { describe, it, expect, vi } from 'vitest';
-import type { QueryClient } from '@tanstack/react-query';
-import { invalidateCustomerPointsQueries, QUERY_KEYS } from './query-keys';
+import { QueryClient } from '@tanstack/react-query';
+import { invalidateCustomerPointsQueries } from './query-keys';
 
 // Mock the service module before any imports that resolve it.
 vi.mock('@/services/carbopuntos.api', () => ({
@@ -88,59 +88,54 @@ describe('useSearchCustomers — service wiring with balance', () => {
   });
 });
 
-describe('invalidateCustomerPointsQueries — list + search invalidation', () => {
-  const makeQc = () =>
-    ({ invalidateQueries: vi.fn() }) as unknown as QueryClient & {
-      invalidateQueries: ReturnType<typeof vi.fn>;
-    };
+describe('invalidateCustomerPointsQueries — real invalidation behavior', () => {
+  // Chequeamos `isInvalidated` sobre un QueryClient REAL en vez de espiar el
+  // mock de invalidateQueries. El bug era sutil: invalidar con la factory key
+  // `['carbopuntos-customers', undefined]` LLAMA a invalidateQueries (un mock lo
+  // daría por bueno) pero NO matchea los queries de búsqueda reales
+  // (`['carbopuntos-customers', 'algunDni']`), porque partialMatchKey compara el
+  // índice 1 (`undefined` vs el dni) y falla. Sembramos queries reales y
+  // verificamos que de verdad quedan invalidadas: eso prueba COMPORTAMIENTO, no
+  // que se haya llamado a una función con cierta key.
+  const SEARCH_KEY = ['carbopuntos-customers', 'someDni'] as const;
+  const LIST_KEY = ['carbopuntos-customers-list', { limit: 50, offset: 0 }] as const;
+  const DETAIL_KEY = ['carbopuntos-customer', 'someDni'] as const;
+  const HISTORY_KEY = ['carbopuntos-customer-history', 'someDni'] as const;
+  const BALANCE_KEY = ['carbopuntos-customer-balance', 'someDni'] as const;
 
-  const calledWithKey = (
-    qc: { invalidateQueries: ReturnType<typeof vi.fn> },
-    key: readonly unknown[],
-  ) =>
-    qc.invalidateQueries.mock.calls.some(
-      ([arg]) => JSON.stringify((arg as { queryKey: unknown[] })?.queryKey) === JSON.stringify(key),
-    );
+  const seedQueries = (qc: QueryClient) => {
+    qc.setQueryData(SEARCH_KEY, []);
+    qc.setQueryData(LIST_KEY, { items: [], total: 0 });
+    qc.setQueryData(DETAIL_KEY, {});
+    qc.setQueryData(HISTORY_KEY, []);
+    qc.setQueryData(BALANCE_KEY, 0);
+  };
 
-  it('invalidates the admin LIST key (carbopuntos-customers-list) after an adjust', () => {
-    const qc = makeQc();
+  const isInvalidated = (qc: QueryClient, key: readonly unknown[]) =>
+    qc.getQueryState(key)?.isInvalidated === true;
 
-    // Simulates what useAdjustPoints.onSuccess does for a known dni.
-    invalidateCustomerPointsQueries(qc, '12345678');
+  it('invalidates search, list, detail, history and balance for a known dni', () => {
+    const qc = new QueryClient();
+    seedQueries(qc);
 
-    expect(calledWithKey(qc, QUERY_KEYS.customersList())).toBe(true);
+    // Simula lo que hace useAdjustPoints.onSuccess con un dni conocido.
+    invalidateCustomerPointsQueries(qc, 'someDni');
+
+    expect(isInvalidated(qc, SEARCH_KEY)).toBe(true);
+    expect(isInvalidated(qc, LIST_KEY)).toBe(true);
+    expect(isInvalidated(qc, DETAIL_KEY)).toBe(true);
+    expect(isInvalidated(qc, HISTORY_KEY)).toBe(true);
+    expect(isInvalidated(qc, BALANCE_KEY)).toBe(true);
   });
 
-  it('still invalidates the SEARCH key (carbopuntos-customers) after an adjust', () => {
-    const qc = makeQc();
+  it('invalidates search and list when no dni is known (void path)', () => {
+    const qc = new QueryClient();
+    seedQueries(qc);
 
-    invalidateCustomerPointsQueries(qc, '12345678');
-
-    expect(calledWithKey(qc, QUERY_KEYS.customers())).toBe(true);
-  });
-
-  it('invalidates the customer DETAIL key after an adjust', () => {
-    const qc = makeQc();
-
-    invalidateCustomerPointsQueries(qc, '12345678');
-
-    expect(calledWithKey(qc, QUERY_KEYS.customer('12345678'))).toBe(true);
-  });
-
-  it('invalidates the admin LIST key after a void (no dni known)', () => {
-    const qc = makeQc();
-
-    // Simulates what useVoidMovement.onSuccess does when the customer is unknown.
+    // Simula lo que hace useVoidMovement.onSuccess cuando no conoce el dni.
     invalidateCustomerPointsQueries(qc);
 
-    expect(calledWithKey(qc, QUERY_KEYS.customersList())).toBe(true);
-  });
-
-  it('still invalidates the SEARCH key after a void', () => {
-    const qc = makeQc();
-
-    invalidateCustomerPointsQueries(qc);
-
-    expect(calledWithKey(qc, QUERY_KEYS.customers())).toBe(true);
+    expect(isInvalidated(qc, SEARCH_KEY)).toBe(true);
+    expect(isInvalidated(qc, LIST_KEY)).toBe(true);
   });
 });

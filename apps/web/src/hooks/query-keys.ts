@@ -63,6 +63,10 @@ export function invalidateCustomerPointsQueries(qc: QueryClient, dni?: string): 
     void qc.invalidateQueries({ queryKey: ['carbopuntos-customer-history'] });
     void qc.invalidateQueries({ queryKey: ['carbopuntos-customer-balance'] });
   }
-  void qc.invalidateQueries({ queryKey: QUERY_KEYS.customers() });
+  // Usamos la raíz literal `['carbopuntos-customers']` (no `QUERY_KEYS.customers()`,
+  // que devuelve `['carbopuntos-customers', undefined]`): el trailing `undefined`
+  // hace que partialMatchKey compare el índice 1 contra el dni real del query de
+  // búsqueda y NO matchee, dejando los resultados de búsqueda sin invalidar.
+  void qc.invalidateQueries({ queryKey: ['carbopuntos-customers'] });
   void qc.invalidateQueries({ queryKey: QUERY_KEYS.customersList() });
 }
