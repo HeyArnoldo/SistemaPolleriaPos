@@ -33,6 +33,12 @@ jobs:
       - name: Build contracts
         run: pnpm --filter @app/contracts build
 
+      - name: Build carbopuntos-contracts
+        run: pnpm --filter @app/carbopuntos-contracts build
+
+      - name: Build carbopuntos-client
+        run: pnpm --filter @app/carbopuntos-client build
+
       - name: Build y publicar app de escritorio
         run: pnpm --filter @app/desktop dist:win
         env:
