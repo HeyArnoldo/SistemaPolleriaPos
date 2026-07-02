@@ -34,7 +34,7 @@ export class User {
    * AES-256-GCM encrypted TOTP secret envelope (v1:<iv>:<tag>:<ct>).
    * Null when 2FA is not enrolled. Never expose in API responses.
    */
-  @Column({ type: 'varchar', length: 255, name: 'totp_secret', nullable: true, default: null })
+  @Column({ type: 'text', name: 'totp_secret', nullable: true, default: null })
   totpSecret: string | null = null;
 
   /** Whether TOTP 2FA is active for this user. Default false. */

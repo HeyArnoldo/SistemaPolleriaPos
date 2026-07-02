@@ -6,9 +6,11 @@ export class AddTotpToUsers1782959652529 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Additive migration — no existing rows are invalidated.
     // totpSecret: encrypted AES-256-GCM envelope; null until enrollment.
+    // Stored as text: envelopes are small but operator-supplied secrets are
+    // unbounded, so a fixed varchar could overflow and crash the seed.
     await queryRunner.query(`
       ALTER TABLE "users"
-        ADD COLUMN IF NOT EXISTS "totp_secret" varchar(255) DEFAULT NULL
+        ADD COLUMN IF NOT EXISTS "totp_secret" text DEFAULT NULL
     `);
 
     // totpEnabled: disabled by default; activated only after confirm step.
