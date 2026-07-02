@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Get,
   Inject,
+  Logger,
   Optional,
   Param,
   ParseIntPipe,
@@ -59,6 +60,8 @@ function toSafeUser(user: User) {
 
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly auth: AuthService,
     private readonly auditService: LoginAuditService,
@@ -155,7 +158,16 @@ export class AuthController {
       );
     }
 
-    const plainSecret = crypto.decrypt(user.totpSecret);
+    let plainSecret: string;
+    try {
+      plainSecret = crypto.decrypt(user.totpSecret);
+    } catch {
+      // Corrupt envelope or rotated TOTP_ENCRYPTION_KEY — the stored secret is
+      // unreadable. Never leak crypto internals; translate to a clean 4xx.
+      throw new BadRequestException(
+        'Stored TOTP secret is unreadable. Please re-enroll via /auth/2fa/enroll.',
+      );
+    }
     const valid = this.totpSvc.verify(dto.code, plainSecret);
 
     if (!valid) {
@@ -175,7 +187,7 @@ export class AuthController {
   @Post('2fa/reset/:userId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)
-  async resetTotp(@Param('userId', ParseIntPipe) userId: number) {
+  async resetTotp(@CurrentUser() admin: User, @Param('userId', ParseIntPipe) userId: number) {
     const target = await this.users.findOne(userId);
 
     if (target.isSystem) {
@@ -187,9 +199,18 @@ export class AuthController {
 
     await this.users.update(userId, { totpEnabled: false, totpSecret: null });
 
-    // Audit log: structured log for the break-glass action
-    // CP-01 LoginAuditService is append-only and scoped to login events;
-    // for a non-login admin action we emit a structured Logger line.
+    // Audit trail for this break-glass admin action.
+    // CP-01 LoginAuditService is intentionally login-scoped: its `reason` is a
+    // constrained enum and it has no actor field, so a 2FA reset does not fit
+    // its schema. We emit a structured Logger line carrying the acting admin
+    // and the target user so the highest-privilege 2FA-removal has a trail.
+    this.logger.log({
+      action: '2fa_reset',
+      actingAdminId: admin.id,
+      targetUserId: userId,
+      timestamp: new Date().toISOString(),
+    });
+
     return { reset: true, userId };
   }
 

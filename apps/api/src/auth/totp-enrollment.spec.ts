@@ -12,6 +12,7 @@ import 'reflect-metadata';
 import {
   BadRequestException,
   ForbiddenException,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { AuthController } from './auth.controller';
@@ -160,6 +161,19 @@ describe('AuthController POST /auth/2fa/enroll/confirm (T-TOTP-5b)', () => {
     expect(savedUser.totpEnabled).toBeFalsy();
   });
 
+  it('returns a clean 400 (not 500) when the stored secret cannot be decrypted', async () => {
+    const { controller, savedUser } = buildController(VALID_KEY);
+    const currentUser = makeUser();
+
+    // Corrupt/undecryptable envelope (e.g. rotated TOTP_ENCRYPTION_KEY or DB corruption).
+    savedUser.totpSecret = 'v1:AAAA:AAAA:AAAA';
+
+    await expect(controller.confirmEnroll(currentUser, { code: '123456' })).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(savedUser.totpEnabled).toBeFalsy();
+  });
+
   it('rejects sistema user with ForbiddenException', async () => {
     const { controller } = buildController(VALID_KEY);
     const sistemaUser = makeUser({ isSystem: true, username: 'sistema' });
@@ -176,5 +190,28 @@ describe('AuthController POST /auth/2fa/enroll/confirm (T-TOTP-5b)', () => {
     await expect(controller.confirmEnroll(user, { code: '123456' })).rejects.toThrow(
       ServiceUnavailableException,
     );
+  });
+});
+
+// ─── POST /auth/2fa/reset/:userId (admin audit) ──────────────────────────────
+
+describe('AuthController POST /auth/2fa/reset/:userId (T-TOTP-5c)', () => {
+  it('audita el reseteo de 2FA con el admin que lo ejecuta y el usuario objetivo', async () => {
+    const { controller } = buildController(VALID_KEY);
+    const admin = makeUser({ id: 7, role: Role.Admin, username: 'admin1' });
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+    const result = await controller.resetTotp(admin, 99);
+
+    expect(result).toEqual({ reset: true, userId: 99 });
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: '2fa_reset',
+        actingAdminId: 7,
+        targetUserId: 99,
+        timestamp: expect.any(String),
+      }),
+    );
+    logSpy.mockRestore();
   });
 });
