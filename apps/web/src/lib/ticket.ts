@@ -54,6 +54,29 @@ const buildCarbopuntosBlock = (sale: Sale): string => {
   `;
 };
 
+/**
+ * Builds the PREMIOS CANJEADOS block HTML for a ticket.
+ * Lists each redeemed reward with its name and point cost (no sol amount — rule D4).
+ * Returns an empty string when there are no redemptions (backward-compatible with
+ * old sales that have no persisted redemptions).
+ */
+const buildRedemptionsBlock = (sale: Sale): string => {
+  const redemptions = sale.carbopuntos?.redemptions;
+  if (!redemptions || redemptions.length === 0) return '';
+
+  const lines = redemptions.map(
+    (r) =>
+      `<div class="cp-row redeem-item"><span>${r.description}</span><span>-${r.costPoints} pts</span></div>`,
+  );
+
+  return `
+    <div class="cp-block redeem-block">
+      <div class="cp-header">PREMIOS CANJEADOS</div>
+      ${lines.join('')}
+    </div>
+  `;
+};
+
 export const buildTicketHtml = (sale: Sale, settings: PrintSettings): string => {
   const ticketWidthMm = settings.ticketWidthMm;
   const ticketPaddingTopMm = settings.paddingTopMm;
@@ -216,6 +239,7 @@ export const buildTicketHtml = (sale: Sale, settings: PrintSettings): string => 
         </div>
         ${paymentsHtml}
         ${buildCarbopuntosBlock(sale)}
+        ${buildRedemptionsBlock(sale)}
         <script>
           (function () {
             try {
