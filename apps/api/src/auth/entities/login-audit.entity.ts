@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 export type LoginOutcome = 'success' | 'failure';
-export type LoginFailureReason = 'bad_password' | 'unknown_user' | 'inactive';
+export type LoginFailureReason = 'bad_password' | 'unknown_user' | 'inactive' | 'bad_totp';
 
 /**
  * LoginAudit — append-only record of every login attempt.
