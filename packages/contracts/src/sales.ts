@@ -1,5 +1,15 @@
 import { z } from 'zod';
 
+/**
+ * Response schema for a single redeemed reward returned in sale.carbopuntos.redemptions[].
+ * This is the READ shape; the INPUT shape (redemptionItemSchema) is unchanged for backward compat.
+ */
+export const saleRedemptionResponseSchema = z.object({
+  description: z.string(),
+  costPoints: z.coerce.number().int(),
+});
+export type SaleRedemptionResponse = z.infer<typeof saleRedemptionResponseSchema>;
+
 export const createSaleItemSchema = z.object({
   productId: z.number().int().positive(),
   quantity: z.coerce.number().int().positive(),

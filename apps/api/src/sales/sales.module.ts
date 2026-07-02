@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentMethod } from './entities/payment-method.entity';
 import { Sale } from './entities/sale.entity';
 import { SaleItem } from './entities/sale-item.entity';
+import { SaleRedemption } from './entities/sale-redemption.entity';
 import { Payment } from './entities/payment.entity';
 import { Product } from '../inventory/entities/product.entity';
 import { Expense } from '../cash/entities/expense.entity';
@@ -16,7 +17,15 @@ import { CarbopuntosModule } from '../carbopuntos/carbopuntos.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PaymentMethod, Sale, SaleItem, Payment, Product, Expense]),
+    TypeOrmModule.forFeature([
+      PaymentMethod,
+      Sale,
+      SaleItem,
+      SaleRedemption,
+      Payment,
+      Product,
+      Expense,
+    ]),
     CarbopuntosModule,
   ],
   providers: [SalesService, PaymentMethodService, CashReportService, SalesResetService],

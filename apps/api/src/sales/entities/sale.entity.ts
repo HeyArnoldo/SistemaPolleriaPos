@@ -10,6 +10,7 @@ import {
 import { User } from '../../users/user.entity';
 import { SaleItem } from './sale-item.entity';
 import { Payment } from './payment.entity';
+import { SaleRedemption } from './sale-redemption.entity';
 
 @Entity('sales')
 export class Sale {
@@ -28,6 +29,9 @@ export class Sale {
 
   @OneToMany(() => Payment, (payment) => payment.sale, { cascade: true })
   payments: Payment[];
+
+  @OneToMany(() => SaleRedemption, (r) => r.sale, { cascade: true })
+  redemptions: SaleRedemption[];
 
   @Column({ type: 'decimal', precision: 12, scale: 2, name: 'total_amount' })
   totalAmount: number;
@@ -68,6 +72,9 @@ export class Sale {
    * Populated by SalesService after a successful hub operation and returned
    * in the HTTP response so the front-end can render the ticket block.
    * Consumers that don't use this field (e.g. syncSales) simply ignore it.
+   *
+   * redemptions: mirrors dto.redemptions so the front-end can render the
+   * "PREMIOS CANJEADOS" block without a second query (PR1).
    */
   carbopuntos?: {
     pointsBefore?: number;
@@ -75,5 +82,6 @@ export class Sale {
     pointsRedeemed?: number;
     pointsAfter?: number;
     pending?: boolean;
+    redemptions?: Array<{ description: string; costPoints: number }>;
   } | null;
 }
