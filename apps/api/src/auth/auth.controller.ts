@@ -30,7 +30,12 @@ import { cookieOptions, SESSION_COOKIE } from '../config/app.config';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { LoginAuditService } from './login-audit.service';
-import { confirmEnrollSchema, ConfirmEnrollInput } from '@app/contracts';
+import {
+  confirmEnrollSchema,
+  ConfirmEnrollInput,
+  login2faSchema,
+  Login2faInput,
+} from '@app/contracts';
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -80,7 +85,39 @@ export class AuthController {
       ip: req.ip ?? null,
       userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
     };
-    const { user, token } = await this.auth.login(input, ctx);
+    const result = await this.auth.login(input, ctx);
+
+    // CP-12 D3: branch on whether 2FA is required.
+    if ('twoFactorRequired' in result) {
+      // Challenge issued — do NOT set a session cookie.
+      return result;
+    }
+
+    res.cookie(SESSION_COOKIE, result.token, cookieOptions());
+    return toSafeUser(result.user);
+  }
+
+  /**
+   * POST /auth/login/2fa { challengeToken, code }
+   *
+   * Step-2 of the two-factor login flow. Verifies the short-lived challenge token
+   * and the TOTP code, then issues the session cookie and returns the safe user.
+   *
+   * Returns 401 if the token is expired/malformed, the code is invalid, or the
+   * user's account is deactivated.
+   * Returns 429 if the username is currently locked out (CP-02).
+   */
+  @Post('login/2fa')
+  async login2fa(
+    @Body(new ZodValidationPipe(login2faSchema)) input: Login2faInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const ctx = {
+      ip: req.ip ?? null,
+      userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
+    };
+    const { user, token } = await this.auth.login2fa(input, ctx);
     res.cookie(SESSION_COOKIE, token, cookieOptions());
     return toSafeUser(user);
   }

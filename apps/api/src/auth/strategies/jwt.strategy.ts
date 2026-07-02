@@ -11,6 +11,8 @@ export interface JwtPayload {
   sub: number;
   username: string;
   role: Role;
+  /** Present only on challenge tokens — must be rejected by the session strategy. */
+  typ?: string;
 }
 
 /** Reads JWT from the httpOnly cookie (never from Authorization header). */
@@ -28,6 +30,12 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: JwtPayload): Promise<User> {
+    // CP-12 D4: challenge tokens carry typ:'2fa_challenge' and MUST NOT be usable
+    // as session credentials. Reject early before any user lookup.
+    if (payload.typ === '2fa_challenge') {
+      throw new UnauthorizedException('Challenge token is not a session');
+    }
+
     const user = await this.users.findById(payload.sub);
     if (!user) throw new UnauthorizedException('Invalid session');
     if (!user.isActive) throw new UnauthorizedException('Account is deactivated');
