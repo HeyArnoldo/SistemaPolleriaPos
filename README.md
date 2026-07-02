@@ -129,22 +129,24 @@ Entra con el `ADMIN_USERNAME` y `ADMIN_PASSWORD` que configuraste en `.env`.
 
 El archivo `.env.example` tiene todas las variables documentadas. Las más importantes:
 
-| Variable          | Descripción                            | Ejemplo                     |
-| ----------------- | -------------------------------------- | --------------------------- |
-| `DB_HOST`         | Host de PostgreSQL                     | `localhost`                 |
-| `DB_PORT`         | Puerto de PostgreSQL                   | `5432`                      |
-| `DB_USER`         | Usuario de la base de datos            | `app`                       |
-| `DB_PASSWORD`     | Contraseña de la base de datos         | `app`                       |
-| `DB_NAME`         | Nombre de la base de datos             | `sistema_polleria_pos`      |
-| `JWT_SECRET`      | Clave secreta para JWT (mín. 32 chars) | `openssl rand -base64 32`   |
-| `JWT_EXPIRES_IN`  | Duración de la sesión                  | `7d`                        |
-| `CORS_ORIGIN`     | URL del frontend (en producción)       | `https://pos.tudominio.com` |
-| `FRONTEND_URL`    | Igual que CORS_ORIGIN                  | `https://pos.tudominio.com` |
-| `ADMIN_USERNAME`  | Usuario del admin inicial              | `admin`                     |
-| `ADMIN_PASSWORD`  | Contraseña del admin inicial           | `Admin1234!`                |
-| `COOKIE_SECURE`   | `true` en producción, `false` en local | `true`                      |
-| `COOKIE_SAMESITE` | `lax` para dominios iguales            | `lax`                       |
-| `BCRYPT_ROUNDS`   | Rondas de hash (12 es suficiente)      | `12`                        |
+| Variable               | Descripción                                                                                                                                       | Ejemplo                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `DB_HOST`              | Host de PostgreSQL                                                                                                                                | `localhost`                 |
+| `DB_PORT`              | Puerto de PostgreSQL                                                                                                                              | `5432`                      |
+| `DB_USER`              | Usuario de la base de datos                                                                                                                       | `app`                       |
+| `DB_PASSWORD`          | Contraseña de la base de datos                                                                                                                    | `app`                       |
+| `DB_NAME`              | Nombre de la base de datos                                                                                                                        | `sistema_polleria_pos`      |
+| `JWT_SECRET`           | Clave secreta para JWT (mín. 32 chars)                                                                                                            | `openssl rand -base64 32`   |
+| `JWT_EXPIRES_IN`       | Duración de la sesión                                                                                                                             | `7d`                        |
+| `CORS_ORIGIN`          | URL del frontend (en producción)                                                                                                                  | `https://pos.tudominio.com` |
+| `FRONTEND_URL`         | Igual que CORS_ORIGIN                                                                                                                             | `https://pos.tudominio.com` |
+| `ADMIN_USERNAME`       | Usuario del admin inicial                                                                                                                         | `admin`                     |
+| `ADMIN_PASSWORD`       | Contraseña del admin inicial                                                                                                                      | `Admin1234!`                |
+| `SYSTEM_USER_PASSWORD` | Contraseña del usuario "sistema" (soporte técnico inamovible). Si no se define, el seed omite ese usuario.                                        | `SoporteSeguro123!`         |
+| `STORE_ID`             | Identificador de la sede para esta instancia del API. Se registra en cada fila del audit de login. Este POS corre una instancia del API por sede. | `sede-lima-01`              |
+| `COOKIE_SECURE`        | `true` en producción, `false` en local                                                                                                            | `true`                      |
+| `COOKIE_SAMESITE`      | `lax` para dominios iguales                                                                                                                       | `lax`                       |
+| `BCRYPT_ROUNDS`        | Rondas de hash (12 es suficiente)                                                                                                                 | `12`                        |
 
 ---
 
@@ -228,6 +230,12 @@ BCRYPT_ROUNDS=12
 # Admin inicial
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=PasswordDelAdmin123!
+
+# Usuario "sistema" (soporte técnico inamovible). Omitir si no se necesita.
+SYSTEM_USER_PASSWORD=SoporteSeguro123!
+
+# Identificador de esta sede/sucursal (se registra en el audit de login)
+STORE_ID=sede-lima-01
 ```
 
 ```bash
