@@ -4,6 +4,10 @@ import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/user.entity';
 import { LoginAuditService, NewLoginAuditRow } from './login-audit.service';
+import { LockoutService } from './lockout.service';
+import { AlertService } from './alert.service';
+import { TooManyAttemptsException } from './too-many-attempts.exception';
+import { LockoutAlertPayload } from './alerts/alert-channel';
 
 export interface AuthResult {
   user: User;
@@ -31,6 +35,8 @@ export class AuthService {
     private readonly users: UsersService,
     private readonly jwt: JwtService,
     private readonly audit: LoginAuditService,
+    private readonly lockout: LockoutService,
+    private readonly alertSvc: AlertService,
   ) {}
 
   private sign(user: User): string {
@@ -48,7 +54,31 @@ export class AuthService {
     });
   }
 
+  /**
+   * Best-effort alert helper: emits a lockout alert but absorbs any rejection so
+   * that an alert failure never changes the thrown TooManyAttemptsException.
+   */
+  private emitAlertBestEffort(payload: LockoutAlertPayload): void {
+    this.alertSvc.emit(payload).catch((e: unknown) => {
+      this.logger.error('alertSvc.emit unexpectedly rejected in AuthService', e);
+    });
+  }
+
   async login(input: LoginInput, ctx: LoginContext = DEFAULT_CTX): Promise<AuthResult> {
+    // CP-02: lockout gate — runs BEFORE password verification to avoid bcrypt cost under attack
+    const locked = await this.lockout.isLocked(input.username);
+    if (locked.isLocked) {
+      this.emitAlertBestEffort({
+        username: input.username,
+        sede: process.env.STORE_ID ?? null,
+        ipAddress: ctx.ip,
+        failureCount: locked.failureCount,
+        occurredAt: new Date(),
+      });
+      throw new TooManyAttemptsException();
+    }
+
+    // CP-01: normal auth flow — unchanged
     const user = await this.users.findByUsername(input.username);
 
     if (!user?.passwordHash) {
