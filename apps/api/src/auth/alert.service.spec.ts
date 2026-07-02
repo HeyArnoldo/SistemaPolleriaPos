@@ -40,14 +40,17 @@ const makePayload = (): LockoutAlertPayload => ({
 
 describe('AlertService', () => {
   let service: AlertService;
-  let mockRepo: { insert: jest.Mock };
+  let mockRepo: { insert: jest.Mock; count: jest.Mock };
   let mockChannel: AlertChannel;
 
   beforeEach(async () => {
     saveEnv('LOCKOUT_ALERT_CHANNEL');
     delete process.env.LOCKOUT_ALERT_CHANNEL;
 
-    mockRepo = { insert: jest.fn().mockResolvedValue(undefined) };
+    mockRepo = {
+      insert: jest.fn().mockResolvedValue(undefined),
+      count: jest.fn().mockResolvedValue(0),
+    };
     mockChannel = makeChannel('test-channel');
 
     const module: TestingModule = await Test.createTestingModule({
@@ -139,6 +142,89 @@ describe('AlertService', () => {
       const svc3 = module3.get<AlertService>(AlertService);
 
       await expect(svc3.emit(makePayload())).resolves.toBeUndefined();
+    });
+  });
+
+  describe('emit() — dedupe within lockout window (CP-02)', () => {
+    it('no reenvía alerta si ya existe una en la ventana de bloqueo', async () => {
+      // Stateful in-memory repo: insert appends a row; count reflects existing
+      // rows so the dedupe check sees prior alerts within the window.
+      const rows: Array<{ username: string; createdAt: Date }> = [];
+      const statefulRepo = {
+        insert: jest.fn().mockImplementation((row: { username: string }) => {
+          rows.push({ username: row.username, createdAt: new Date() });
+          return Promise.resolve(undefined);
+        }),
+        count: jest.fn().mockImplementation(() => Promise.resolve(rows.length)),
+      };
+      const channel = makeChannel('test-channel');
+      const module2: TestingModule = await Test.createTestingModule({
+        providers: [
+          AlertService,
+          { provide: getRepositoryToken(LoginLockoutAlert), useValue: statefulRepo },
+          { provide: 'ALERT_CHANNEL', useValue: channel },
+        ],
+      }).compile();
+      const svc = module2.get<AlertService>(AlertService);
+
+      // Four consecutive locked attempts for the same username in the window.
+      for (let i = 0; i < 4; i++) {
+        await svc.emit(makePayload());
+      }
+
+      // At most ONE persisted alert and one channel delivery for the episode.
+      expect(statefulRepo.insert).toHaveBeenCalledTimes(1);
+      expect(channel.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('emits again for a different username (dedupe is per-username)', async () => {
+      const rowsByUser = new Map<string, number>();
+      const statefulRepo = {
+        insert: jest.fn().mockImplementation((row: { username: string }) => {
+          rowsByUser.set(row.username, (rowsByUser.get(row.username) ?? 0) + 1);
+          return Promise.resolve(undefined);
+        }),
+        count: jest
+          .fn()
+          .mockImplementation((opts: { where: { username: string } }) =>
+            Promise.resolve(rowsByUser.get(opts.where.username) ?? 0),
+          ),
+      };
+      const channel = makeChannel('test-channel');
+      const module3: TestingModule = await Test.createTestingModule({
+        providers: [
+          AlertService,
+          { provide: getRepositoryToken(LoginLockoutAlert), useValue: statefulRepo },
+          { provide: 'ALERT_CHANNEL', useValue: channel },
+        ],
+      }).compile();
+      const svc = module3.get<AlertService>(AlertService);
+
+      await svc.emit({ ...makePayload(), username: 'admin' });
+      await svc.emit({ ...makePayload(), username: 'admin' });
+      await svc.emit({ ...makePayload(), username: 'cajero1' });
+
+      expect(statefulRepo.insert).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls back to emitting when the dedupe count query throws (fail-open)', async () => {
+      const failOpenRepo = {
+        insert: jest.fn().mockResolvedValue(undefined),
+        count: jest.fn().mockRejectedValue(new Error('DB down')),
+      };
+      const channel = makeChannel('test-channel');
+      const module4: TestingModule = await Test.createTestingModule({
+        providers: [
+          AlertService,
+          { provide: getRepositoryToken(LoginLockoutAlert), useValue: failOpenRepo },
+          { provide: 'ALERT_CHANNEL', useValue: channel },
+        ],
+      }).compile();
+      const svc = module4.get<AlertService>(AlertService);
+
+      await svc.emit(makePayload());
+
+      expect(failOpenRepo.insert).toHaveBeenCalledTimes(1);
     });
   });
 

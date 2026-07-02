@@ -13,14 +13,19 @@ const SISTEMA_USERNAME = 'sistema';
 
 /** Default policy values (overridable via env). */
 const DEFAULT_MAX_FAILURES = 5;
-const DEFAULT_WINDOW_MINUTES = 15;
+/**
+ * Default sliding-window length in minutes. Exported so the alert de-dup logic
+ * (AlertService) computes the SAME lockout window as the lockout count, keeping
+ * dedupe and enforcement in agreement.
+ */
+export const DEFAULT_WINDOW_MINUTES = 15;
 const DEFAULT_SYSTEM_MAX_FAILURES = 20;
 
 /**
  * Read an integer from an environment variable, falling back to the supplied
  * default when the variable is absent, empty, NaN, or <= 0.
  */
-function readIntEnv(name: string, fallback: number): number {
+export function readIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
   const parsed = parseInt(raw, 10);
