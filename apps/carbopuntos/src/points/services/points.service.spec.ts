@@ -690,6 +690,226 @@ describe('PointsService', () => {
     });
   });
 
+  // ── reverse — net sum (CP-05 fix) ────────────────────────────────────────
+
+  /**
+   * Manager stub for the new reverse() implementation that:
+   *  1. findOne(PointsMovement, { idempotencyKey })  → existingByKey
+   *  2. findOne(PointsMovement, { type:'reversal' }) → existingReversalForSaleRef
+   *  3. find(PointsMovement, ...)                    → movementsForSaleRef
+   */
+  function makeReverseManager(opts: {
+    balance: PointsBalance;
+    movementsForSaleRef: PointsMovement[];
+    existingReversalForSaleRef?: PointsMovement | null;
+    existingByKey?: PointsMovement | null;
+  }): jest.Mocked<EntityManager> {
+    return {
+      findOne: jest
+        .fn()
+        .mockImplementation(
+          (entity: new () => unknown, query: { where: Record<string, unknown> }) => {
+            if (entity === Customer) return Promise.resolve(makeCustomer());
+            if (entity === PointsBalance) return Promise.resolve(opts.balance);
+            if (entity === PointsMovement) {
+              const where = query.where;
+              if ('idempotencyKey' in where) return Promise.resolve(opts.existingByKey ?? null);
+              if ('type' in where && where['type'] === 'reversal')
+                return Promise.resolve(opts.existingReversalForSaleRef ?? null);
+            }
+            return Promise.resolve(null);
+          },
+        ),
+      find: jest.fn().mockResolvedValue(opts.movementsForSaleRef),
+      create: jest
+        .fn()
+        .mockImplementation((_: unknown, data: unknown) => ({ ...(data as object) })),
+      save: jest
+        .fn()
+        .mockImplementation((obj: unknown) =>
+          Promise.resolve({ ...(obj as object), id: 'rev-new' }),
+        ),
+    } as unknown as jest.Mocked<EntityManager>;
+  }
+
+  function mockReverseTransaction(opts: Parameters<typeof makeReverseManager>[0]) {
+    const manager = makeReverseManager(opts);
+    (customerRepo.manager.transaction as jest.Mock).mockImplementation(
+      async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
+    );
+    return manager;
+  }
+
+  describe('reverse — net sum (CP-05 fix)', () => {
+    // Task 1.1 — mixed sale (accrual +10, redeem -10): net = 0, balance unchanged
+    it('task 1.1: cancels mixed sale (accrue +10, redeem -10) → reversal points = 0, balance unchanged', async () => {
+      const balance = makeBalance(0);
+      const accrual = makeMovement({ type: 'accrual', points: 10, saleRef: 'SALE-MIX' });
+      const redeem = makeMovement({
+        type: 'redeem',
+        points: -10,
+        saleRef: 'SALE-MIX',
+        id: 'mov-2',
+      });
+
+      mockReverseTransaction({ balance, movementsForSaleRef: [accrual, redeem] });
+
+      const result = await service.reverse({
+        customerDni: '12345678',
+        saleRef: 'SALE-MIX',
+        userRef: 'cajero1',
+        idempotencyKey: 'rev-mix',
+        sede: 'pisac',
+      });
+
+      expect(result.type).toBe('reversal');
+      expect(result.points).toBe(0);
+      expect(result.balanceBefore).toBe(0);
+      expect(result.balanceAfter).toBe(0);
+    });
+
+    // Task 1.2 — redeem-only sale: redeemed 20 from balance 50 → balance 30; reversal +20 → balance 50
+    it('task 1.2: cancels redeem-only sale (redeem 20, balance was 30) → reversal +20, balance back to 50', async () => {
+      const balance = makeBalance(30);
+      const redeem = makeMovement({ type: 'redeem', points: -20, saleRef: 'SALE-REDEEM' });
+
+      mockReverseTransaction({ balance, movementsForSaleRef: [redeem] });
+
+      const result = await service.reverse({
+        customerDni: '12345678',
+        saleRef: 'SALE-REDEEM',
+        userRef: 'cajero1',
+        idempotencyKey: 'rev-redeem',
+        sede: 'pisac',
+      });
+
+      expect(result.type).toBe('reversal');
+      expect(result.points).toBe(20);
+      expect(result.balanceBefore).toBe(30);
+      expect(result.balanceAfter).toBe(50);
+    });
+
+    // Task 1.3 — regression: accrual-only; balance 55 (40+15 accrual) → reversal -15 → 40
+    it('task 1.3 (regression): cancels accrual-only sale (accrual 15, balance 55) → reversal -15, balance back to 40', async () => {
+      const balance = makeBalance(55);
+      const accrual = makeMovement({ type: 'accrual', points: 15, saleRef: 'SALE-ACCR' });
+
+      mockReverseTransaction({ balance, movementsForSaleRef: [accrual] });
+
+      const result = await service.reverse({
+        customerDni: '12345678',
+        saleRef: 'SALE-ACCR',
+        userRef: 'cajero1',
+        idempotencyKey: 'rev-accr',
+        sede: 'pisac',
+      });
+
+      expect(result.type).toBe('reversal');
+      expect(result.points).toBe(-15);
+      expect(result.balanceBefore).toBe(55);
+      expect(result.balanceAfter).toBe(40);
+    });
+
+    // Task 1.4a — idempotency: same key replay
+    it('task 1.4a: double-cancel with same idempotencyKey returns existing movement unchanged', async () => {
+      const existingReversal = makeMovement({
+        type: 'reversal',
+        points: -15,
+        saleRef: 'SALE-DBL',
+        idempotencyKey: 'rev-dbl',
+      });
+
+      mockReverseTransaction({
+        balance: makeBalance(40),
+        movementsForSaleRef: [],
+        existingByKey: existingReversal,
+      });
+
+      const result = await service.reverse({
+        customerDni: '12345678',
+        saleRef: 'SALE-DBL',
+        userRef: 'cajero1',
+        idempotencyKey: 'rev-dbl',
+        sede: 'pisac',
+      });
+
+      expect(result.id).toBe(existingReversal.id);
+    });
+
+    // Task 1.4b — idempotency: different key, same saleRef → saleRef guard fires, no second balance change
+    it('task 1.4b: double-cancel with different key but same saleRef → guard returns existing reversal, no balance update', async () => {
+      const existingReversal = makeMovement({
+        type: 'reversal',
+        points: -15,
+        saleRef: 'SALE-DBL2',
+        idempotencyKey: 'rev-dbl2-first',
+        id: 'rev-existing',
+      });
+      const manager = mockReverseTransaction({
+        balance: makeBalance(40),
+        movementsForSaleRef: [makeMovement({ type: 'accrual', points: 15, saleRef: 'SALE-DBL2' })],
+        existingByKey: null,
+        existingReversalForSaleRef: existingReversal,
+      });
+
+      const result = await service.reverse({
+        customerDni: '12345678',
+        saleRef: 'SALE-DBL2',
+        userRef: 'cajero1',
+        idempotencyKey: 'rev-dbl2-second',
+        sede: 'pisac',
+      });
+
+      expect(result.id).toBe(existingReversal.id);
+      const balanceSaves = (manager.save as jest.Mock).mock.calls.filter(
+        ([obj]: [Record<string, unknown>]) => 'balance' in obj,
+      );
+      expect(balanceSaves).toHaveLength(0);
+    });
+
+    // Task 1.5 — floor: reversal would overdraw; balance floored at 0, partial detail recorded
+    it('task 1.5: reversal that would overdraw floors balance at 0 and records partial reversal in detail', async () => {
+      const balance = makeBalance(5);
+      const accrual = makeMovement({ type: 'accrual', points: 10, saleRef: 'SALE-FLOOR' });
+
+      mockReverseTransaction({ balance, movementsForSaleRef: [accrual] });
+
+      const result = await service.reverse({
+        customerDni: '12345678',
+        saleRef: 'SALE-FLOOR',
+        userRef: 'cajero1',
+        idempotencyKey: 'rev-floor',
+        sede: 'pisac',
+      });
+
+      expect(result.type).toBe('reversal');
+      expect(result.points).toBe(-5);
+      expect(result.balanceBefore).toBe(5);
+      expect(result.balanceAfter).toBe(0);
+      expect(result.detail).toMatch(/floored at 0/);
+    });
+
+    // Task 1.6 — no-op: no movements for saleRef → reversal 0, balance intact
+    it('task 1.6: reverse with no movements for saleRef → reversal points = 0, balance unchanged', async () => {
+      const balance = makeBalance(50);
+
+      mockReverseTransaction({ balance, movementsForSaleRef: [] });
+
+      const result = await service.reverse({
+        customerDni: '12345678',
+        saleRef: 'SALE-NOOP2',
+        userRef: 'cajero1',
+        idempotencyKey: 'rev-noop2',
+        sede: 'pisac',
+      });
+
+      expect(result.type).toBe('reversal');
+      expect(result.points).toBe(0);
+      expect(result.balanceBefore).toBe(50);
+      expect(result.balanceAfter).toBe(50);
+    });
+  });
+
   // ── withRetry: detección por instanceof / código 23505 — Fix #6 ────────────
 
   describe('withRetry (Fix #6)', () => {
