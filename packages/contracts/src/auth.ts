@@ -41,10 +41,12 @@ export const authUserSchema = z.object({
   username: z.string(),
   role: z.nativeEnum(UserRole),
   isActive: z.boolean(),
+  totpEnabled: z.boolean(),
   profile: z.object({
     firstName: z.string(),
     lastName: z.string(),
     avatarUrl: z.string().nullable(),
   }),
+  createdAt: z.coerce.date(),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
