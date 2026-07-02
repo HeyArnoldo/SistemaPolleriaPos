@@ -30,10 +30,10 @@ function makeBalance(): PointsBalance {
 
 describe('CustomersController', () => {
   let controller: CustomersController;
-  let service: { findByDni: jest.Mock; list: jest.Mock };
+  let service: { findByDni: jest.Mock; list: jest.Mock; search: jest.Mock };
 
   beforeEach(() => {
-    service = { findByDni: jest.fn(), list: jest.fn() };
+    service = { findByDni: jest.fn(), list: jest.fn(), search: jest.fn() };
     controller = new CustomersController(service as unknown as CustomersService);
   });
 
@@ -68,6 +68,35 @@ describe('CustomersController', () => {
 
       expect(result).toHaveProperty('items');
       expect(result).toHaveProperty('total');
+    });
+  });
+
+  // ── GET /customers/search ─────────────────────────────────────────────────
+
+  describe('search', () => {
+    it('delegates to service.search and returns results with balance', async () => {
+      const customer = makeCustomer();
+      const searchResult = [{ ...customer, balance: 80 }];
+      service.search.mockResolvedValue(searchResult);
+
+      const result = await controller.search(
+        { q: 'juan', limit: undefined, offset: undefined },
+        'pisac',
+      );
+
+      expect(service.search).toHaveBeenCalledWith('juan', undefined);
+      expect(result).toEqual(searchResult);
+    });
+
+    it('returns an empty array when no results found', async () => {
+      service.search.mockResolvedValue([]);
+
+      const result = await controller.search(
+        { q: 'xyz', limit: undefined, offset: undefined },
+        'pisac',
+      );
+
+      expect(result).toEqual([]);
     });
   });
 

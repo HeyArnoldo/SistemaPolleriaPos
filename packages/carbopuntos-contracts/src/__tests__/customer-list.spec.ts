@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { listCustomersQuerySchema, listCustomersResponseSchema } from '../customer';
+import {
+  listCustomersQuerySchema,
+  listCustomersResponseSchema,
+  searchCustomersResponseSchema,
+} from '../customer';
 
 // RED → these tests fail until the schemas are added to customer.ts
 
@@ -128,5 +132,50 @@ describe('listCustomersResponseSchema', () => {
     delete (itemWithoutBalance as any).balance;
     const result = listCustomersResponseSchema.safeParse({ items: [itemWithoutBalance], total: 1 });
     expect(result.success).toBe(false);
+  });
+});
+
+// ─── searchCustomersResponseSchema ────────────────────────────────────────────
+
+describe('searchCustomersResponseSchema', () => {
+  const validItem = {
+    id: '550e8400-e29b-41d4-a716-446655440000',
+    dni: '12345678',
+    firstName: 'Juan',
+    lastName: 'Perez',
+    fullName: 'Juan Perez',
+    phone: null,
+    consentAt: new Date().toISOString(),
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    balance: 50,
+  };
+
+  it('accepts a valid search response with balance-bearing items', () => {
+    const result = searchCustomersResponseSchema.safeParse([validItem]);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts an empty search result', () => {
+    const result = searchCustomersResponseSchema.safeParse([]);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects when an item is missing the balance field', () => {
+    const itemWithoutBalance = { ...validItem };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (itemWithoutBalance as any).balance;
+    const result = searchCustomersResponseSchema.safeParse([itemWithoutBalance]);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a negative balance', () => {
+    const result = searchCustomersResponseSchema.safeParse([{ ...validItem, balance: -1 }]);
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts balance of 0', () => {
+    const result = searchCustomersResponseSchema.safeParse([{ ...validItem, balance: 0 }]);
+    expect(result.success).toBe(true);
   });
 });

@@ -66,21 +66,30 @@ beforeEach(() => {
 
 describe('searchCustomers', () => {
   it('calls GET /carbopuntos/customers/search with q param', async () => {
-    const customers = [makeCustomer()];
-    mockApi.get.mockResolvedValue({ data: customers });
+    const customersWithBalance = [{ ...makeCustomer(), balance: 80 }];
+    mockApi.get.mockResolvedValue({ data: customersWithBalance });
 
     const result = await searchCustomers('Juan');
 
     expect(mockApi.get).toHaveBeenCalledWith('/carbopuntos/customers/search', {
       params: { q: 'Juan' },
     });
-    expect(result).toEqual(customers);
+    expect(result).toEqual(customersWithBalance);
   });
 
   it('returns empty array when API returns empty', async () => {
     mockApi.get.mockResolvedValue({ data: [] });
     const result = await searchCustomers('xyz');
     expect(result).toEqual([]);
+  });
+
+  it('each result includes a balance field', async () => {
+    const customersWithBalance = [{ ...makeCustomer(), balance: 150 }];
+    mockApi.get.mockResolvedValue({ data: customersWithBalance });
+
+    const result = await searchCustomers('Juan');
+
+    expect(result[0]?.balance).toBe(150);
   });
 });
 

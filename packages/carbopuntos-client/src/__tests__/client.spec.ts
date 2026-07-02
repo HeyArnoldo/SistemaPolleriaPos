@@ -359,3 +359,70 @@ describe('CarbopuntosClient — lookupOrAffiliate', () => {
     );
   });
 });
+
+describe('CarbopuntosClient — search (with balance)', () => {
+  let mockAxiosInstance: Partial<AxiosInstance> & {
+    get: ReturnType<typeof vi.fn>;
+    post: ReturnType<typeof vi.fn>;
+  };
+  let client: CarbopuntosClient;
+
+  const fakeSearchItem = {
+    id: '550e8400-e29b-41d4-a716-446655440001',
+    dni: '12345678',
+    firstName: 'Juan',
+    lastName: 'Pérez',
+    fullName: 'Juan Pérez García',
+    phone: null,
+    consentAt: '2026-06-17T10:00:00-05:00',
+    isActive: true,
+    createdAt: '2026-06-17T10:00:00-05:00',
+    balance: 80,
+  };
+
+  beforeEach(() => {
+    mockAxiosInstance = { get: vi.fn(), post: vi.fn() };
+    vi.mocked(axios.create).mockReturnValue(mockAxiosInstance as unknown as AxiosInstance);
+    client = makeClient();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls GET /customers/search with q params', async () => {
+    mockAxiosInstance.get.mockResolvedValue({ data: [fakeSearchItem] });
+
+    const result = await client.search({ q: 'juan' });
+
+    expect(mockAxiosInstance.get).toHaveBeenCalledWith('/customers/search', {
+      params: expect.objectContaining({ q: 'juan' }),
+    });
+    expect(result).toHaveLength(1);
+  });
+
+  it('each result item includes a balance field', async () => {
+    mockAxiosInstance.get.mockResolvedValue({ data: [fakeSearchItem] });
+
+    const result = await client.search({ q: 'juan' });
+
+    expect(result[0]?.balance).toBe(80);
+  });
+
+  it('validates response shape — rejects items without balance', async () => {
+    const itemWithoutBalance = { ...fakeSearchItem };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (itemWithoutBalance as any).balance;
+    mockAxiosInstance.get.mockResolvedValue({ data: [itemWithoutBalance] });
+
+    await expect(client.search({ q: 'juan' })).rejects.toThrow();
+  });
+
+  it('returns empty array when search yields no results', async () => {
+    mockAxiosInstance.get.mockResolvedValue({ data: [] });
+
+    const result = await client.search({ q: 'xyz' });
+
+    expect(result).toEqual([]);
+  });
+});

@@ -16,12 +16,14 @@ import {
   balanceSchema,
   pointsMovementSchema,
   listCustomersResponseSchema,
+  searchCustomersResponseSchema,
 } from '@app/carbopuntos-contracts';
 import type {
   AffiliateCustomerInput,
   CustomerSearchInput,
   ListCustomersQuery,
   ListCustomersResponse,
+  SearchCustomersResponse,
   AccrueInput,
   RedeemInput,
   MixedOperationInput,
@@ -57,9 +59,6 @@ export interface CarbopuntosClientConfig {
 
 /** Schema para lista de movimientos (paginada). */
 const movementListSchema = z.array(pointsMovementSchema);
-
-/** Schema para lista de clientes. */
-const customerListSchema = z.array(customerSchema);
 
 /**
  * Cliente HTTP tipado para comunicación sede→hub.
@@ -126,14 +125,15 @@ export class CarbopuntosClient {
 
   /**
    * Busca clientes por nombre o DNI parcial.
+   * Cada resultado incluye el balance embebido (mismo patrón que listCustomers).
    * Llama GET /customers/search?q=...
    */
-  async search(input: CustomerSearchInput): Promise<Customer[]> {
+  async search(input: CustomerSearchInput): Promise<SearchCustomersResponse> {
     const params = customerSearchSchema.parse(input);
     const { data } = await this.request(() =>
       this.http.get<unknown>('/customers/search', { params }),
     );
-    return customerListSchema.parse(data);
+    return searchCustomersResponseSchema.parse(data);
   }
 
   /**
