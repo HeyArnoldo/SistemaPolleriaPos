@@ -8,13 +8,17 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LoginAudit } from './entities/login-audit.entity';
+import { LoginLockoutAlert } from './entities/login-lockout-alert.entity';
 import { LoginAuditService } from './login-audit.service';
+import { LockoutService } from './lockout.service';
+import { AlertService } from './alert.service';
+import { LogAlertChannel, resolveAlertChannel } from './alerts/log-alert-channel';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
-    TypeOrmModule.forFeature([LoginAudit]),
+    TypeOrmModule.forFeature([LoginAudit, LoginLockoutAlert]),
     JwtModule.registerAsync({
       useFactory: () => ({
         secret: process.env.JWT_SECRET,
@@ -25,6 +29,17 @@ import { LoginAuditService } from './login-audit.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, LoginAuditService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    LoginAuditService,
+    LockoutService,
+    AlertService,
+    LogAlertChannel,
+    {
+      provide: 'ALERT_CHANNEL',
+      useFactory: (): ReturnType<typeof resolveAlertChannel> => resolveAlertChannel(),
+    },
+  ],
 })
 export class AuthModule {}
