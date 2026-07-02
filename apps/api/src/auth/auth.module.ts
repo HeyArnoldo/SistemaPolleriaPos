@@ -12,7 +12,7 @@ import { LoginLockoutAlert } from './entities/login-lockout-alert.entity';
 import { LoginAuditService } from './login-audit.service';
 import { LockoutService } from './lockout.service';
 import { AlertService } from './alert.service';
-import { LogAlertChannel, resolveAlertChannel } from './alerts/log-alert-channel';
+import { resolveAlertChannel } from './alerts/log-alert-channel';
 
 @Module({
   imports: [
@@ -35,7 +35,6 @@ import { LogAlertChannel, resolveAlertChannel } from './alerts/log-alert-channel
     LoginAuditService,
     LockoutService,
     AlertService,
-    LogAlertChannel,
     {
       provide: 'ALERT_CHANNEL',
       useFactory: (): ReturnType<typeof resolveAlertChannel> => resolveAlertChannel(),
