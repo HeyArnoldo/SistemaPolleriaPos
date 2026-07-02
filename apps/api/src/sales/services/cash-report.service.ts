@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Between, DataSource } from 'typeorm';
 import * as ExcelJS from 'exceljs';
 import { Payment } from '../entities/payment.entity';
+import { Sale } from '../entities/sale.entity';
 import { Expense } from '../../cash/entities/expense.entity';
 
 interface DayInfo {
@@ -15,6 +16,8 @@ interface DayGroup {
   info: DayInfo;
   payments: Payment[];
   expenses: Expense[];
+  /** Sales that have at least one redemption (canje); amount contribution = 0 (D4). */
+  redemptionSales: Sale[];
 }
 
 interface Transaction {
@@ -42,6 +45,7 @@ export class CashReportService {
 
     const paymentRepo = this.dataSource.getRepository(Payment);
     const expenseRepo = this.dataSource.getRepository(Expense);
+    const saleRepo = this.dataSource.getRepository(Sale);
 
     const payments = await paymentRepo.find({
       relations: ['paymentMethod', 'sale', 'sale.items', 'sale.items.product'],
@@ -55,17 +59,28 @@ export class CashReportService {
       order: { createdAt: 'ASC' },
     });
 
+    // Second query: sales that have redemptions (canje-only or mixed).
+    // These are invisible to the payment-driven query when total=0 (D4).
+    // Amount contribution for each canje row = 0, so monetary totals stay intact.
+    const redemptionSales = await saleRepo.find({
+      relations: ['redemptions', 'items', 'items.product'],
+      where: { isCanceled: false, createdAt: Between(start, end) },
+      order: { createdAt: 'ASC' },
+    });
+
     const workbook = new ExcelJS.Workbook();
     const dayGroups = new Map<string, DayGroup>();
 
-    const addToGroup = (date: Date, kind: 'payment' | 'expense', item: Payment | Expense) => {
+    const addToGroup = (date: Date, kind: 'payment' | 'expense' | 'redemptionSale', item: Payment | Expense | Sale) => {
       const info = this.getLimaDayInfo(date);
       const existing = dayGroups.get(info.key);
-      const group: DayGroup = existing ?? { info, payments: [], expenses: [] };
+      const group: DayGroup = existing ?? { info, payments: [], expenses: [], redemptionSales: [] };
       if (kind === 'payment') {
         group.payments.push(item as Payment);
-      } else {
+      } else if (kind === 'expense') {
         group.expenses.push(item as Expense);
+      } else {
+        group.redemptionSales.push(item as Sale);
       }
       if (!existing) {
         dayGroups.set(info.key, group);
@@ -74,6 +89,10 @@ export class CashReportService {
 
     payments.forEach((p) => addToGroup(p.sale?.createdAt ?? p.createdAt, 'payment', p));
     expenses.forEach((e) => addToGroup(e.createdAt, 'expense', e));
+    // Only fold sales that actually have redemption rows
+    redemptionSales
+      .filter((s) => s.redemptions && s.redemptions.length > 0)
+      .forEach((s) => addToGroup(s.createdAt, 'redemptionSale', s));
 
     const groups = Array.from(dayGroups.values()).sort((a, b) =>
       a.info.key.localeCompare(b.info.key),
@@ -85,6 +104,7 @@ export class CashReportService {
         'SIN DATOS',
         this.buildRangeLabel(start, end, hasRange),
         generatedAt,
+        [],
         [],
         [],
       );
@@ -99,6 +119,7 @@ export class CashReportService {
           generatedAt,
           group.payments,
           group.expenses,
+          group.redemptionSales,
         );
 
         const inventoryLabel = this.buildInventoryDayLabel(group.info);
@@ -110,6 +131,7 @@ export class CashReportService {
           inventoryLabel,
           generatedAt,
           group.payments,
+          group.redemptionSales,
         );
       });
     }
@@ -126,6 +148,7 @@ export class CashReportService {
     generatedAt: Date,
     payments: Payment[],
     expenses: Expense[],
+    redemptionSales: Sale[],
   ): void {
     // netAmount is always persisted at sale creation time; fall back to amount if zero (legacy rows)
     const totalSales = payments.reduce(
@@ -196,6 +219,16 @@ export class CashReportService {
         .map(([saleId]) => saleId),
     );
 
+    // Build canje rows — one row per sale with redemptions; amount = 0 (D4 preserved).
+    // Concept lists all prize descriptions from the redemptions array.
+    const buildCanjeConcept = (sale: Sale): string => {
+      const redemptions = sale.redemptions ?? [];
+      if (!redemptions.length) return 'Canje';
+      return redemptions
+        .map((r) => `${r.description} (-${r.costPoints} pts)`)
+        .join('\n');
+    };
+
     const transactions: Transaction[] = [
       ...payments.map((p) => ({
         type: 'Venta',
@@ -219,6 +252,18 @@ export class CashReportService {
         method: e.paymentMethod?.name ?? 'N/D',
         saleNumber: '',
         amount: Number(-e.amount),
+        transferTime: '',
+        isMixed: false,
+      })),
+      // Canje rows — amount is always 0 so txTotal and method totals are NOT affected (D4).
+      ...redemptionSales.map((s) => ({
+        type: 'Canje',
+        dateValue: s.createdAt,
+        date: this.formatLimaDateTime(s.createdAt),
+        concept: buildCanjeConcept(s),
+        method: '-',
+        saleNumber: s.saleNumber ?? '',
+        amount: 0,
         transferTime: '',
         isMixed: false,
       })),
@@ -542,6 +587,7 @@ export class CashReportService {
     label: string,
     generatedAt: Date,
     payments: Payment[],
+    redemptionSales: Sale[] = [],
   ): void {
     // Deduplicate sales (a sale can have multiple payments)
     const salesMap = new Map<number, Payment['sale']>();
@@ -551,7 +597,8 @@ export class CashReportService {
       }
     });
 
-    const productTotals = new Map<number, { name: string; quantity: number }>();
+    // Sold products (Motivo = Venta) — from payment-driven sales
+    const productTotals = new Map<number, { name: string; quantity: number; motivo: string }>();
     salesMap.forEach((sale) => {
       sale?.items?.forEach((item) => {
         const productId = item.product?.id;
@@ -559,9 +606,26 @@ export class CashReportService {
         const current = productTotals.get(productId) ?? {
           name: item.product.name,
           quantity: 0,
+          motivo: 'Venta',
         };
         current.quantity += Number(item.quantity ?? 0);
         productTotals.set(productId, current);
+      });
+    });
+
+    // Redemption prizes (Motivo = Canje) — from canje sales; grouped by description
+    // Uses description as key (not productId) because prizes are free-text today (design decision)
+    const canjeProductTotals = new Map<string, { name: string; quantity: number; motivo: string }>();
+    redemptionSales.forEach((sale) => {
+      (sale.redemptions ?? []).forEach((r) => {
+        const key = r.description;
+        const current = canjeProductTotals.get(key) ?? {
+          name: r.description,
+          quantity: 0,
+          motivo: 'Canje',
+        };
+        current.quantity += Number(r.quantity ?? 1);
+        canjeProductTotals.set(key, current);
       });
     });
 
@@ -602,7 +666,7 @@ export class CashReportService {
 
     const invTitleRow = sheet.addRow(['INVENTARIO DE VENTAS']);
     invTitleRow.height = 20;
-    sheet.mergeCells('A1', 'B1');
+    sheet.mergeCells('A1', 'C1');
     const invTitleCell = invTitleRow.getCell(1);
     invTitleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
     invTitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -610,20 +674,21 @@ export class CashReportService {
 
     const rangeRow = sheet.addRow([label]);
     rangeRow.height = 18;
-    sheet.mergeCells('A2', 'B2');
+    sheet.mergeCells('A2', 'C2');
     const rangeCell = rangeRow.getCell(1);
     rangeCell.font = { bold: true };
     rangeCell.alignment = { vertical: 'middle', horizontal: 'center' };
     rangeCell.fill = subtitleFill;
 
     const generatedRow = sheet.addRow([`Generado: ${this.formatLimaDateTimeHuman(generatedAt)}`]);
-    sheet.mergeCells('A3', 'B3');
+    sheet.mergeCells('A3', 'C3');
     generatedRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
     generatedRow.getCell(1).fill = subtitleFill;
 
     sheet.addRow([]);
 
-    const headerRow = sheet.addRow(['Producto', 'Cantidad']);
+    // Header now has 3 columns: Producto | Cantidad | Motivo
+    const headerRow = sheet.addRow(['Producto', 'Cantidad', 'Motivo']);
     headerRow.font = { bold: true };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
     headerRow.height = 18;
@@ -634,20 +699,30 @@ export class CashReportService {
 
     sheet.getColumn(1).width = 40;
     sheet.getColumn(2).width = 14;
+    sheet.getColumn(3).width = 14;
 
+    // Sold products (Motivo = Venta)
     const sortedProducts = Array.from(productTotals.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-    sortedProducts.forEach((product, index) => {
-      const row = sheet.addRow([product.name, product.quantity]);
+    // Redemption prizes (Motivo = Canje)
+    const sortedCanjeProducts = Array.from(canjeProductTotals.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+
+    const allInventoryRows = [...sortedProducts, ...sortedCanjeProducts];
+
+    allInventoryRows.forEach((product, index) => {
+      const row = sheet.addRow([product.name, product.quantity, product.motivo]);
       row.getCell(2).numFmt = '#,##0';
       row.getCell(2).alignment = { horizontal: 'right', vertical: 'middle' };
+      row.getCell(3).alignment = { horizontal: 'center', vertical: 'middle' };
       if (index % 2 === 0) {
         row.eachCell((cell) => {
           cell.fill = zebraFill;
         });
       }
-      applyRowBorder(row, 1, 2);
+      applyRowBorder(row, 1, 3);
     });
   }
 
