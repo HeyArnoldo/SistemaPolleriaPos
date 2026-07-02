@@ -19,6 +19,7 @@ import { ROLES_KEY } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { LoginAudit } from './entities/login-audit.entity';
+import { TotpService } from './totp.service';
 
 type AnyHandler = (...args: unknown[]) => unknown;
 
@@ -44,9 +45,13 @@ function buildController(): {
     list: jest.fn().mockResolvedValue({ data: [], page: 1, limit: 20, total: 0 }),
   };
 
+  // Pass null for optional TOTP services (not needed by these login/audit tests)
   const controller = new AuthController(
     mockAuth as unknown as AuthService,
     mockAudit as unknown as LoginAuditService,
+    null, // totpCrypto — not needed for login/audit tests
+    new TotpService(), // totpSvc — uses default env config
+    null as any, // users — not needed for login/audit paths
   );
 
   return { controller, mockAuth, mockAudit };

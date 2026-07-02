@@ -7,6 +7,7 @@ import { Role } from '../../common/enums/role.enum';
 import { PaymentMethod } from '../../sales/entities/payment-method.entity';
 import { ProductCategory } from '../../inventory/entities/product-category.entity';
 import { Product } from '../../inventory/entities/product.entity';
+import { TotpCryptoService } from '../../auth/totp-crypto.service';
 
 async function run(): Promise<void> {
   await dataSource.initialize();
@@ -170,6 +171,31 @@ async function run(): Promise<void> {
         profileRepo.create({ firstName: 'Sistema', lastName: 'Groow' }),
       );
       const sistemaPasswordHash = await bcrypt.hash(sistemaPassword, rounds);
+
+      // CP-12: sistema 2FA from environment (break-glass, Groow holds out-of-band).
+      // Both SYSTEM_TOTP_SECRET and TOTP_ENCRYPTION_KEY must be set to enable it.
+      const systemTotpSecret = process.env.SYSTEM_TOTP_SECRET;
+      const totpCrypto = TotpCryptoService.tryCreate();
+
+      let totpSecretEnvelope: string | null = null;
+      let totpEnabled = false;
+
+      if (systemTotpSecret && totpCrypto) {
+        totpSecretEnvelope = totpCrypto.encrypt(systemTotpSecret);
+        totpEnabled = true;
+        console.log('[seed] sistema user: TOTP 2FA enabled from SYSTEM_TOTP_SECRET.');
+      } else if (systemTotpSecret && !totpCrypto) {
+        console.log(
+          '[seed] SYSTEM_TOTP_SECRET is set but TOTP_ENCRYPTION_KEY is absent — ' +
+            'skipping sistema 2FA setup. Set TOTP_ENCRYPTION_KEY to enable it.',
+        );
+      } else {
+        console.log(
+          '[seed] SYSTEM_TOTP_SECRET not set — sistema user created without 2FA. ' +
+            'Set SYSTEM_TOTP_SECRET (base32) + TOTP_ENCRYPTION_KEY to enable break-glass 2FA.',
+        );
+      }
+
       await userRepo
         .createQueryBuilder()
         .insert()
@@ -181,6 +207,8 @@ async function run(): Promise<void> {
           isActive: true,
           isSystem: true,
           profile: sistemaProfile,
+          totpSecret: totpSecretEnvelope,
+          totpEnabled,
         })
         .execute();
       console.log('[seed] sistema user created.');
