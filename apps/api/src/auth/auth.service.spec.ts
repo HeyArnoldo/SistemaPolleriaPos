@@ -20,7 +20,6 @@ import { TooManyAttemptsException } from './too-many-attempts.exception';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/user.entity';
 import { Role } from '../common/enums/role.enum';
-import * as bcrypt from 'bcryptjs';
 
 // Use a pre-computed bcrypt hash for 'secret123' to avoid slow bcrypt in unit tests.
 // Generated with bcrypt.hash('secret123', 4).
