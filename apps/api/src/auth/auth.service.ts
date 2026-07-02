@@ -10,7 +10,9 @@ import { TotpService } from './totp.service';
 import { TotpCryptoService } from './totp-crypto.service';
 import { TooManyAttemptsException } from './too-many-attempts.exception';
 import { LockoutAlertPayload } from './alerts/alert-channel';
-import { expiresToMs } from '../config/app.config';
+import { randomUUID } from 'node:crypto';
+import { challengeExpiresToMs } from '../config/app.config';
+import { ConsumedJtiStore } from './consumed-jti.store';
 
 export interface AuthResult {
   user: User;
@@ -41,11 +43,26 @@ export interface LoginContext {
 }
 
 const DEFAULT_CTX: LoginContext = { ip: null, userAgent: null };
-const DEFAULT_CHALLENGE_EXPIRES = '5m';
+
+/** Full decoded challenge-token payload used internally by the 2FA flow. */
+interface ChallengePayload {
+  sub: number;
+  typ?: string;
+  jti?: string;
+  /** JWT expiry in seconds since epoch (set by expiresIn). */
+  exp?: number;
+}
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+
+  /**
+   * CP-12 hardening: single-use challenge tokens. In-memory jti store; safe for
+   * the single-instance-per-sede deployment (see ConsumedJtiStore for the
+   * documented restart limitation).
+   */
+  private readonly consumedJti = new ConsumedJtiStore();
 
   constructor(
     private readonly users: UsersService,
@@ -66,10 +83,34 @@ export class AuthService {
    * The token carries typ:'2fa_challenge' and is NOT usable as a session.
    */
   signChallengeToken(userId: number): string {
+    // FAIL-CLOSED TTL: never inherit the 7-day session fallback for challenge
+    // tokens; a malformed/oversized value collapses to a short, clamped window.
     const expiresInSec = Math.floor(
-      expiresToMs(process.env.TOTP_CHALLENGE_EXPIRES ?? DEFAULT_CHALLENGE_EXPIRES) / 1000,
+      challengeExpiresToMs(process.env.TOTP_CHALLENGE_EXPIRES) / 1000,
     );
-    return this.jwt.sign({ sub: userId, typ: '2fa_challenge' }, { expiresIn: expiresInSec });
+    // jti makes the token single-use (see login2fa). Cryptographically random,
+    // never Math.random.
+    return this.jwt.sign(
+      { sub: userId, typ: '2fa_challenge', jti: randomUUID() },
+      { expiresIn: expiresInSec },
+    );
+  }
+
+  /**
+   * Verifies a challenge token and returns the full decoded payload.
+   * Throws UnauthorizedException for expired, malformed, or wrong-typ tokens.
+   */
+  private verifyChallengePayload(token: string): ChallengePayload {
+    let payload: ChallengePayload;
+    try {
+      payload = this.jwt.verify<ChallengePayload>(token);
+    } catch {
+      throw new UnauthorizedException('Invalid or expired challenge token');
+    }
+    if (payload.typ !== '2fa_challenge') {
+      throw new UnauthorizedException('Invalid challenge token');
+    }
+    return payload;
   }
 
   /**
@@ -77,16 +118,7 @@ export class AuthService {
    * Throws UnauthorizedException for expired, malformed, or wrong-typ tokens.
    */
   verifyChallengeToken(token: string): number {
-    let payload: { sub: number; typ?: string };
-    try {
-      payload = this.jwt.verify<{ sub: number; typ?: string }>(token);
-    } catch {
-      throw new UnauthorizedException('Invalid or expired challenge token');
-    }
-    if (payload.typ !== '2fa_challenge') {
-      throw new UnauthorizedException('Invalid challenge token');
-    }
-    return payload.sub;
+    return this.verifyChallengePayload(token).sub;
   }
 
   /**
@@ -200,7 +232,14 @@ export class AuthService {
   async login2fa(input: Login2faInput, ctx: LoginContext = DEFAULT_CTX): Promise<AuthResult> {
     // Step A: verify the challenge token first so we have a userId for the lockout check.
     // UnauthorizedException here — no audit (token is invalid, username unknown at this point).
-    const userId = this.verifyChallengeToken(input.challengeToken);
+    const payload = this.verifyChallengePayload(input.challengeToken);
+    const userId = payload.sub;
+
+    // CP-12 hardening: single-use challenge. Reject a token whose jti was already
+    // consumed by a prior SUCCESSFUL step-2 (replay within the TTL window).
+    if (payload.jti && this.consumedJti.isConsumed(payload.jti)) {
+      throw new UnauthorizedException('challenge already used');
+    }
 
     // Step B: load user to get the username for the lockout check.
     const user = await this.users.findById(userId);
@@ -252,7 +291,17 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired code');
     }
 
-    // Step E: code is valid — issue the session and write success audit.
+    // Step E: code is valid — mark the jti consumed BEFORE issuing the session
+    // so this exact token can never mint a second session within its TTL. The
+    // consumed entry is evicted once the token's own expiry passes (bounded).
+    if (payload.jti) {
+      const expiresAtMs = payload.exp
+        ? payload.exp * 1000
+        : Date.now() + challengeExpiresToMs(process.env.TOTP_CHALLENGE_EXPIRES);
+      this.consumedJti.consume(payload.jti, expiresAtMs);
+    }
+
+    // Issue the session and write the success audit.
     await this.recordAudit({
       username: user.username,
       outcome: 'success',

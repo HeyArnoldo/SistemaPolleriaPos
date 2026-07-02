@@ -272,6 +272,48 @@ describe('AuthService.login2fa — lockout interplay (T-login2fa-lockout-interpl
   });
 });
 
+// ─── Single-use challenge token (jti) ────────────────────────────────────────
+
+describe('AuthService.login2fa — single-use challenge (T-login2fa-single-use)', () => {
+  it('accepts a valid (challengeToken, code) exactly once', async () => {
+    const { service } = buildService({ totpValid: true });
+    // signChallengeToken carries a unique jti so the token becomes one-shot
+    const token = service.signChallengeToken(7);
+
+    const result = await service.login2fa({ challengeToken: token, code: '123456' }, ctx);
+    expect(result).toHaveProperty('user');
+    expect(result).toHaveProperty('token');
+  });
+
+  it('rejects REUSING the same challengeToken a second time (even with a valid code)', async () => {
+    const { service } = buildService({ totpValid: true });
+    const token = service.signChallengeToken(7);
+
+    // First use succeeds and consumes the jti
+    await service.login2fa({ challengeToken: token, code: '123456' }, ctx);
+
+    // Second use with the same token must be rejected
+    await expect(service.login2fa({ challengeToken: token, code: '123456' }, ctx)).rejects.toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('does NOT consume the jti when the code is invalid (token remains usable)', async () => {
+    const { service, mockTotpSvc } = buildService({ totpValid: false });
+    const token = service.signChallengeToken(7);
+
+    // Bad code → rejected, but the jti must NOT be marked consumed
+    await expect(service.login2fa({ challengeToken: token, code: '000000' }, ctx)).rejects.toThrow(
+      UnauthorizedException,
+    );
+
+    // The same token must still be usable once the code is correct
+    mockTotpSvc.verify.mockReturnValue(true);
+    const result = await service.login2fa({ challengeToken: token, code: '123456' }, ctx);
+    expect(result).toHaveProperty('token');
+  });
+});
+
 // ─── Controller route: POST /auth/login/2fa ──────────────────────────────────
 
 type AnyHandler = (...args: unknown[]) => unknown;
