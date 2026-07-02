@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { In, Repository } from 'typeorm';
+import { ILike, In, Repository } from 'typeorm';
 import { CustomersService } from './customers.service';
 import { Customer } from '../entities/customer.entity';
 import { DniService, DniLookupResult } from './dni.service';
@@ -94,14 +94,57 @@ describe('CustomersService', () => {
   // ── search ────────────────────────────────────────────────────────────────
 
   describe('search', () => {
-    it('debe buscar clientes por nombre o DNI parcial', async () => {
-      const customers = [{ id: 'uuid-1', fullName: 'JUAN PEREZ' }] as Customer[];
+    it('debe enriquecer cada resultado con su saldo usando un IN de balances', async () => {
+      const customers = [
+        { id: 'uuid-1', fullName: 'JUAN PEREZ', dni: '11111111' },
+        { id: 'uuid-2', fullName: 'JUAN GOMEZ', dni: '22222222' },
+      ] as Customer[];
       customerRepo.find.mockResolvedValue(customers);
+      balanceRepo.find.mockResolvedValue([
+        { customerId: 'uuid-1', balance: 80 },
+        { customerId: 'uuid-2', balance: 0 },
+      ] as PointsBalance[]);
 
       const result = await service.search('juan');
 
-      expect(result).toBe(customers);
-      expect(customerRepo.find).toHaveBeenCalled();
+      expect(result).toHaveLength(2);
+      expect(result[0].balance).toBe(80);
+      expect(result[1].balance).toBe(0);
+      expect(balanceRepo.find).toHaveBeenCalledWith({
+        where: { customerId: In(['uuid-1', 'uuid-2']) },
+      });
+    });
+
+    it('debe caer a balance 0 cuando no hay registro de saldo en el resultado de búsqueda', async () => {
+      const customers = [{ id: 'uuid-1', fullName: 'ANA RIOS', dni: '33333333' }] as Customer[];
+      customerRepo.find.mockResolvedValue(customers);
+      balanceRepo.find.mockResolvedValue([]);
+
+      const result = await service.search('ana');
+
+      expect(result[0].balance).toBe(0);
+    });
+
+    it('no debe consultar balances cuando la búsqueda no retorna resultados', async () => {
+      customerRepo.find.mockResolvedValue([]);
+
+      const result = await service.search('xyz');
+
+      expect(result).toEqual([]);
+      expect(balanceRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('debe incluir un OR por teléfono en el where (el placeholder promete buscar por teléfono)', async () => {
+      customerRepo.find.mockResolvedValue([]);
+
+      await service.search('999');
+
+      const callArg = customerRepo.find.mock.calls[0]?.[0];
+      const where = callArg?.where as Array<Record<string, unknown>>;
+      // El where es un array de condiciones OR; una de ellas debe matchear por phone.
+      const hasPhoneClause = where.some((clause) => 'phone' in clause);
+      expect(hasPhoneClause).toBe(true);
+      expect(where).toEqual(expect.arrayContaining([{ phone: ILike('%999%') }]));
     });
   });
 

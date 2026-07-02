@@ -1,7 +1,14 @@
 /**
  * Clientes page — admin view for CarboPuntos customer management.
- * Shows a searchable list, customer detail with history,
- * adjust points (admin), and void movement per row (admin).
+ * Pixel-perfect clone of the CustomersView prototype (lines 1316–1493).
+ *
+ * List view: searchable table with DNI / CLIENTE / TELÉFONO / PUNTOS columns.
+ * Detail view: identity card, balance card, actions (adjust), movement history
+ *              with per-row void action.
+ *
+ * Exceptions from the prototype (by spec):
+ *  D21 — No expiry block ("Próximo vencimiento") — points don't expire.
+ *  D22 — No "Eliminar historial" button; voiding is per-row (RotateCcw).
  */
 import { useState } from 'react';
 import {
@@ -9,17 +16,15 @@ import {
   Plus,
   Minus,
   RotateCcw,
-  ChevronLeft,
+  ArrowLeft,
   AlertCircle,
   Loader2,
   History,
-  UserCheck,
+  Star,
+  User,
+  Edit3,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -27,14 +32,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   useListCustomers,
   useSearchCustomers,
@@ -69,17 +68,7 @@ function movementLabel(type: PointsMovement['type']): string {
   return labels[type] ?? type;
 }
 
-function movementBadgeVariant(
-  type: PointsMovement['type'],
-  isVoided: boolean,
-): 'default' | 'secondary' | 'outline' | 'destructive' {
-  if (isVoided) return 'secondary';
-  if (type === 'accrual') return 'default';
-  if (type === 'redeem') return 'destructive';
-  return 'outline';
-}
-
-// ─── AdjustModal ─────────────────────────────────────────────────────────────
+// ─── AdjustModal ──────────────────────────────────────────────────────────────
 
 interface AdjustModalProps {
   open: boolean;
@@ -315,8 +304,11 @@ interface CustomerDetailProps {
 
 function CustomerDetail({ dni, onBack }: CustomerDetailProps) {
   const { data: customerData, isLoading: loadingCustomer } = useGetCustomer(dni);
-  // Unwrap the CustomerWithBalance response — we need the nested Customer object.
+  // Unwrap the CustomerWithBalance response.
   const customer = customerData?.customer ?? null;
+  // Use the hub's canonical balance (from PointsBalance), not derived from history.
+  const currentBalance = customerData?.balance ?? 0;
+
   const { data: history = [], isLoading: loadingHistory } = useGetCustomerHistory(dni);
 
   const { mutate: adjustPoints, isPending: isAdjusting } = useAdjustPoints();
@@ -325,15 +317,6 @@ function CustomerDetail({ dni, onBack }: CustomerDetailProps) {
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState<PointsMovement | null>(null);
-
-  // Derive current balance from history (latest balanceAfter of non-voided movements)
-  const activeMovements = history.filter((m) => !m.isVoided);
-  const currentBalance =
-    activeMovements.length > 0
-      ? activeMovements.reduce((latest, m) =>
-          new Date(m.createdAt) > new Date(latest.createdAt) ? m : latest,
-        ).balanceAfter
-      : 0;
 
   if (loadingCustomer) {
     return (
@@ -385,115 +368,116 @@ function CustomerDetail({ dni, onBack }: CustomerDetailProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="p-0 sm:p-2 max-w-4xl mx-auto">
       {/* Back */}
-      <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2">
-        <ChevronLeft className="h-4 w-4 mr-1" />
-        Volver
-      </Button>
+      <button
+        onClick={onBack}
+        aria-label="Volver a clientes"
+        className="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1 mb-6"
+      >
+        <ArrowLeft className="w-4 h-4" /> Volver a clientes
+      </button>
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold">{customer.fullName}</h2>
-          <p className="text-sm text-muted-foreground">
-            DNI {customer.dni}
-            {customer.phone && ` · ${customer.phone}`}
-          </p>
+      {/* Identity */}
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+          <User className="w-7 h-7 text-red-600" />
         </div>
-        <Button
-          onClick={() => setAdjustOpen(true)}
-          className="bg-slate-900 hover:bg-slate-800 text-white"
-        >
-          Ajustar puntos
-        </Button>
+        <div className="min-w-0">
+          <div className="text-[10px] tracking-wider font-bold text-slate-500">CLIENTE</div>
+          <div className="text-2xl font-black text-slate-900 leading-tight">
+            {customer.fullName}
+          </div>
+          <div className="text-sm text-slate-500 mt-0.5 font-mono">
+            DNI {customer.dni}
+            {customer.phone ? ` · ${customer.phone}` : ''}
+          </div>
+        </div>
       </div>
 
       {/* Balance card */}
-      <Card className="bg-slate-900 text-white">
-        <CardContent className="pt-6">
-          <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-black">{currentBalance}</span>
-            <span className="text-slate-300 text-lg">pts</span>
-          </div>
-          <p className="text-slate-400 text-sm mt-1">Saldo global (todas las sedes)</p>
-        </CardContent>
-      </Card>
+      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-5 text-white mb-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+          <span className="text-xs font-semibold tracking-wider">SALDO ACTUAL</span>
+        </div>
+        <div className="text-4xl font-black">
+          {currentBalance}
+          <span className="text-base font-medium text-slate-300 ml-1">pts</span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => setAdjustOpen(true)}
+          className="flex-1 py-2.5 text-sm font-semibold border border-slate-200 rounded-md hover:bg-slate-50 flex items-center justify-center gap-2"
+        >
+          <Edit3 className="w-3.5 h-3.5" /> Ajustar puntos
+        </button>
+      </div>
 
       {/* History */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <History className="h-4 w-4" />
-            Historial completo
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loadingHistory ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : history.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Sin movimientos.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Puntos</TableHead>
-                  <TableHead>Sede</TableHead>
-                  <TableHead>Detalle</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {history.map((m) => (
-                  <TableRow key={m.id} className={m.isVoided ? 'opacity-50' : ''}>
-                    <TableCell>
-                      <Badge variant={movementBadgeVariant(m.type, m.isVoided)}>
-                        {movementLabel(m.type)}
-                        {m.isVoided && ' (anulado)'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell
-                      className={`font-mono font-bold ${
-                        m.points > 0 ? 'text-emerald-700' : 'text-red-600'
-                      }`}
-                    >
-                      {m.points > 0 ? '+' : ''}
-                      {m.points}
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-500">{m.sede}</TableCell>
-                    <TableCell className="text-xs max-w-[200px] truncate">
-                      {m.detail ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-500 whitespace-nowrap">
-                      {formatDate(m.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      {!m.isVoided && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive hover:text-destructive"
-                          onClick={() => {
-                            setSelectedMovement(m);
-                            setVoidOpen(true);
-                          }}
-                          title="Anular movimiento"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+          <div className="text-sm font-bold text-slate-900">Historial de movimientos</div>
+          <div className="text-[11px] text-slate-500">
+            {history.length} {history.length === 1 ? 'movimiento' : 'movimientos'}
+          </div>
+        </div>
+
+        {loadingHistory ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : history.length === 0 ? (
+          <div className="text-center py-12 text-slate-400">
+            <History className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <div className="text-sm">Sin movimientos aún</div>
+          </div>
+        ) : (
+          <div>
+            {history.map((m) => (
+              <div
+                key={m.id}
+                className={`flex items-center gap-3 px-5 py-3 border-b border-slate-50 last:border-0 ${
+                  m.isVoided ? 'opacity-50' : ''
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-slate-900 truncate">
+                    {movementLabel(m.type)}
+                    {m.detail ? ` · ${m.detail}` : ''}
+                    {m.isVoided ? <span className="text-slate-400 ml-1">(anulado)</span> : null}
+                  </div>
+                  <div className="text-[11px] text-slate-500">{formatDate(m.createdAt)}</div>
+                </div>
+                <div
+                  className={`text-base font-black flex-shrink-0 ${
+                    m.points > 0 ? 'text-emerald-600' : 'text-red-600'
+                  }`}
+                >
+                  {m.points > 0 ? '+' : ''}
+                  {m.points}
+                </div>
+                {!m.isVoided && (
+                  <button
+                    onClick={() => {
+                      setSelectedMovement(m);
+                      setVoidOpen(true);
+                    }}
+                    title="Anular movimiento"
+                    aria-label="Anular movimiento"
+                    className="ml-1 p-1 rounded hover:bg-red-50 text-destructive"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Modals */}
       <AdjustModal
@@ -519,48 +503,57 @@ function CustomerDetail({ dni, onBack }: CustomerDetailProps) {
 // ─── CustomerTable ────────────────────────────────────────────────────────────
 
 interface CustomerTableProps {
-  customers: Customer[];
+  rows: (Customer & { balance: number })[];
   onSelect: (dni: string) => void;
 }
 
-function CustomerTable({ customers, onSelect }: CustomerTableProps) {
+function CustomerTable({ rows, onSelect }: CustomerTableProps) {
   return (
-    <Card>
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nombre</TableHead>
-              <TableHead>DNI</TableHead>
-              <TableHead>Teléfono</TableHead>
-              <TableHead>Registrado</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {customers.map((c: Customer) => (
-              <TableRow
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <table className="w-full">
+        <thead>
+          <tr className="text-left text-[11px] font-bold tracking-wider text-slate-500 border-b border-slate-100">
+            <th className="px-5 py-3">DNI</th>
+            <th className="py-3">CLIENTE</th>
+            <th className="py-3">TELÉFONO</th>
+            <th className="px-5 py-3 text-right">PUNTOS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="text-center py-12 text-slate-400 text-sm">
+                Sin resultados
+              </td>
+            </tr>
+          ) : (
+            rows.map((c) => (
+              <tr
                 key={c.id}
-                className="cursor-pointer hover:bg-slate-50"
+                className="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer"
                 onClick={() => onSelect(c.dni)}
               >
-                <TableCell className="font-medium">{c.fullName}</TableCell>
-                <TableCell className="font-mono text-sm">{c.dni}</TableCell>
-                <TableCell className="text-slate-500">{c.phone ?? '—'}</TableCell>
-                <TableCell className="text-xs text-slate-500">
-                  {new Date(c.createdAt).toLocaleDateString('es-PE')}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={c.isActive ? 'default' : 'secondary'}>
-                    {c.isActive ? 'Activo' : 'Inactivo'}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+                <td className="px-5 py-3 font-mono text-sm text-slate-600">{c.dni}</td>
+                <td className="py-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                      <User className="w-4 h-4 text-red-600" />
+                    </div>
+                    <div className="font-semibold text-sm text-slate-900">{c.fullName}</div>
+                  </div>
+                </td>
+                <td className="py-3 text-sm text-slate-600">{c.phone ?? '—'}</td>
+                <td className="px-5 py-3 text-right">
+                  <span className="inline-flex items-center gap-1 font-black text-red-600">
+                    <Star className="w-3 h-3 fill-red-600" /> {c.balance}
+                  </span>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -580,41 +573,40 @@ export default function ClientesPage() {
     isSearching,
   );
 
-  // Show list or search results based on whether the user has typed anything.
-  const customers: Customer[] = isSearching ? searchResults : (listData?.items ?? []);
+  // Unified rows: both list and search return (Customer & { balance: number })[].
+  const rows: (Customer & { balance: number })[] = isSearching
+    ? searchResults
+    : (listData?.items ?? []);
   const isLoading = isSearching ? searchLoading : listLoading;
+
+  const total = listData?.total ?? 0;
 
   if (selectedDni) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <CustomerDetail dni={selectedDni} onBack={() => setSelectedDni(null)} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <UserCheck className="h-5 w-5 text-red-600" />
-            Clientes CarboPuntos
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Historial cross-sede · ajuste de puntos · anular movimiento
-          </p>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-black text-slate-900">Clientes</h1>
+        <p className="text-sm text-slate-500 mt-0.5">
+          {total} {total === 1 ? 'cliente registrado' : 'clientes registrados'} en CarboPuntos
+        </p>
       </div>
 
       {/* Search */}
-      <div className="relative max-w-lg">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Filtrar por DNI, nombre o teléfono..."
+      <div className="relative mb-4">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9"
+          placeholder="Buscar por DNI, nombre o teléfono"
+          className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-md text-sm bg-white focus:outline-none focus:border-slate-900"
         />
       </div>
 
@@ -623,20 +615,14 @@ export default function ClientesPage() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : customers.length === 0 ? (
-        isSearching ? (
-          <div className="flex items-center gap-2 py-8 text-slate-500">
-            <AlertCircle className="h-4 w-4" />
-            No se encontraron clientes para &quot;{searchQuery}&quot;.
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 py-8 text-slate-500">
-            <AlertCircle className="h-4 w-4" />
-            No hay clientes registrados aún.
-          </div>
-        )
+      ) : rows.length === 0 && !isSearching ? (
+        <div className="flex items-center gap-2 py-8 text-slate-500">
+          <AlertCircle className="h-4 w-4" />
+          No hay clientes registrados aún.
+        </div>
       ) : (
-        <CustomerTable customers={customers} onSelect={setSelectedDni} />
+        // CustomerTable handles its own empty-search state row internally.
+        <CustomerTable rows={rows} onSelect={setSelectedDni} />
       )}
     </div>
   );

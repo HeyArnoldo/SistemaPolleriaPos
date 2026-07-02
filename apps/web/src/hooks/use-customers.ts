@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as carbopuntosApi from '@/services/carbopuntos.api';
 import type { ListCustomersParams } from '@/services/carbopuntos.api';
-import { QUERY_KEYS } from './query-keys';
+import { QUERY_KEYS, invalidateCustomerPointsQueries } from './query-keys';
+import type { Customer } from '@app/carbopuntos-contracts';
 
 // ─── List all customers (admin page, no query required) ───────────────────────
 
@@ -11,7 +12,7 @@ import { QUERY_KEYS } from './query-keys';
  */
 export const useListCustomers = (params: ListCustomersParams = {}) =>
   useQuery({
-    queryKey: ['carbopuntos-customers-list', params] as const,
+    queryKey: [...QUERY_KEYS.customersList(), params] as const,
     queryFn: () => carbopuntosApi.listCustomers(params),
     staleTime: 30_000,
   });
@@ -19,7 +20,7 @@ export const useListCustomers = (params: ListCustomersParams = {}) =>
 // ─── Lookup / search ──────────────────────────────────────────────────────────
 
 export const useSearchCustomers = (q: string, enabled = true) =>
-  useQuery({
+  useQuery<(Customer & { balance: number })[]>({
     queryKey: QUERY_KEYS.customers(q),
     queryFn: () => carbopuntosApi.searchCustomers(q),
     enabled: enabled && q.length >= 1,
@@ -56,7 +57,11 @@ export const useAffiliateCustomer = () => {
     mutationFn: (payload: carbopuntosApi.AffiliateCustomerPayload) =>
       carbopuntosApi.affiliateCustomer(payload),
     onSuccess: (customer) => {
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customers() });
+      // Usamos la raíz literal `['carbopuntos-customers']` y no `QUERY_KEYS.customers()`:
+      // sin argumento esa factory devuelve `['carbopuntos-customers', undefined]`, y ese
+      // `undefined` final hace que partialMatchKey no matchee los queries de búsqueda reales.
+      void qc.invalidateQueries({ queryKey: ['carbopuntos-customers'] });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customersList() });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.customer(customer.dni) });
     },
   });
@@ -68,10 +73,7 @@ export const useAdjustPoints = () => {
     mutationFn: ({ dni, payload }: { dni: string; payload: carbopuntosApi.AdjustPointsPayload }) =>
       carbopuntosApi.adjustPoints(dni, payload),
     onSuccess: (_result, { dni }) => {
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customer(dni) });
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customerHistory(dni) });
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customerBalance(dni) });
-      void qc.invalidateQueries({ queryKey: QUERY_KEYS.customers() });
+      invalidateCustomerPointsQueries(qc, dni);
     },
   });
 };
@@ -83,10 +85,7 @@ export const useVoidMovement = () => {
       carbopuntosApi.voidMovement(movementId, reason),
     onSuccess: () => {
       // Invalidate all customer-related queries since we don't know which customer
-      void qc.invalidateQueries({ queryKey: ['carbopuntos-customer'] });
-      void qc.invalidateQueries({ queryKey: ['carbopuntos-customer-history'] });
-      void qc.invalidateQueries({ queryKey: ['carbopuntos-customer-balance'] });
-      void qc.invalidateQueries({ queryKey: ['carbopuntos-customers'] });
+      invalidateCustomerPointsQueries(qc);
     },
   });
 };
