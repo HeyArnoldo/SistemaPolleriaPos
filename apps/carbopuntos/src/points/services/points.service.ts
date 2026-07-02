@@ -426,18 +426,16 @@ export class PointsService {
         const actualDelta = Math.max(requestedDelta, -balanceBefore) || 0;
         const balanceAfter = balanceBefore + actualDelta;
 
-        let detail: string | null;
-        if (saleMovements.length === 0) {
-          detail = input.detail ?? 'No-op: no movements found for this saleRef; balance unchanged';
-          this.logger.log(
-            `[reverse] No-op para DNI ${input.customerDni}, saleRef ${input.saleRef} — sin movimientos previos`,
-          );
-        } else if (actualDelta !== requestedDelta) {
-          detail = `Partial reversal: applied ${actualDelta} pts (requested ${requestedDelta}); balance floored at 0`;
-        } else {
-          detail = input.detail ?? null;
-        }
+        // Build audit detail: no-op / partial floor / normal.
+        const isNoOp = saleMovements.length === 0;
+        const isPartial = actualDelta !== requestedDelta;
+        const detail: string | null = isNoOp
+          ? (input.detail ?? 'No-op: no movements found for this saleRef; balance unchanged')
+          : isPartial
+            ? `Partial reversal: applied ${actualDelta} pts (requested ${requestedDelta}); balance floored at 0`
+            : (input.detail ?? null);
 
+        // Single-movement contract: always insert exactly one 'reversal' row (D15 + design KD1).
         const { movement, created } = await this.insertMovementIdempotent(manager, {
           customerId: customer.id,
           type: 'reversal' as MovementType,
@@ -458,7 +456,8 @@ export class PointsService {
         }
 
         this.logger.log(
-          `[reverse] DNI ${input.customerDni} saleRef ${input.saleRef}: net=${net}, reversal=${actualDelta} pts (${balanceBefore} → ${balanceAfter})`,
+          `[reverse] DNI ${input.customerDni} saleRef ${input.saleRef}: ` +
+            `${isNoOp ? 'no-op' : `net=${net}`}, reversal=${actualDelta} pts (${balanceBefore} → ${balanceAfter})`,
         );
         return movement;
       }),
