@@ -20,3 +20,6 @@ coverage/
 .idea/
 .vscode/
 .claude/
+
+# Graphify — grafo generado (regenerar con `graphify update .`)
+graphify-out/
