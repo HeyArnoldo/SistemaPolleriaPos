@@ -442,6 +442,31 @@ SistemaPolleriaPos/
 
 ---
 
+## Autenticación en dos pasos (2FA)
+
+El sistema soporta TOTP (Google Authenticator, Authy y apps compatibles) como segundo factor para cuentas de administrador.
+
+### Cómo activa el admin su 2FA
+
+1. Inicia sesión como administrador y ve a **Configuración**.
+2. Busca la tarjeta **Autenticación en dos pasos (2FA)** y haz clic en **Activar 2FA**.
+3. Escanea el código QR con Google Authenticator (o Authy). Si no puedes escanear, copia el código base32 manualmente y agrégalo en la app.
+4. Ingresa el código de 6 dígitos que muestra tu app y haz clic en **Confirmar y activar**.
+5. Listo: a partir del próximo login verás una segunda pantalla pidiendo el código TOTP.
+
+### Cómo es el login con 2FA activo
+
+1. Ingresa tu usuario y contraseña como siempre.
+2. Si tu cuenta tiene 2FA, aparece una segunda pantalla solicitando el código de 6 dígitos.
+3. Abre tu app de autenticación, copia el código actual y confirma.
+4. El código caduca en 5 minutos (configurable con `TOTP_CHALLENGE_EXPIRES`). Si expira, vuelves al paso 1 automáticamente.
+
+### Usuario `sistema` y 2FA
+
+El usuario `sistema` (soporte técnico Groow) tiene su secreto TOTP configurado vía la variable de entorno `SYSTEM_TOTP_SECRET` — no se puede inscribir desde la UI. Ver tabla de variables de entorno más abajo.
+
+---
+
 ## Roles de usuario
 
 | Rol       | Acceso                                                                     |
