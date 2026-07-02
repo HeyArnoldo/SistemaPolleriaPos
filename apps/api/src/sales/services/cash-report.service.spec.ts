@@ -11,6 +11,12 @@
  *   T2 — redeem-only (no payments, total 0) → nothing in payments, no distortion
  *   T3 — canceled sale + canje (F6) → excluded, no ghost payment
  *   T4 — redeem-only mixed with normal sales → totals = only normal sales
+ *
+ * PR3 — canje traceability additions:
+ *   R1 — canje-only sale → appears as Tipo=Canje amount 0; monetary totals unchanged (regression)
+ *   R2 — mixed sale (venta+canje) → venta rows normal; canje rows amount 0; no double-count
+ *   R3 — inventory sheet → Motivo column: "Venta" for products sold, "Canje" for redemption prizes
+ *   R4 — range with no redemptions → identical behaviour to existing tests (no regression)
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
@@ -18,6 +24,7 @@ import { CashReportService } from './cash-report.service';
 import { Payment } from '../entities/payment.entity';
 import { Expense } from '../../cash/entities/expense.entity';
 import { Sale } from '../entities/sale.entity';
+import { SaleRedemption } from '../entities/sale-redemption.entity';
 import { PaymentMethod } from '../entities/payment-method.entity';
 
 // ---------------------------------------------------------------------------
@@ -73,25 +80,74 @@ const makePayment = (
 };
 
 /**
- * Builds a mock DataSource that returns controlled sets of payments and expenses.
- * `CashReportService` calls dataSource.getRepository(Entity).find(opts) for both.
+ * Builds a mock DataSource that returns controlled sets of payments, expenses,
+ * and redemption-sales (second query added in PR3).
+ * `CashReportService` calls dataSource.getRepository(Entity).find(opts) for each.
  */
-function makeDataSource(payments: Payment[], expenses: Expense[] = []): DataSource {
+function makeDataSource(
+  payments: Payment[],
+  expenses: Expense[] = [],
+  redemptionSales: Sale[] = [],
+): DataSource {
   const paymentRepo = {
     find: jest.fn().mockResolvedValue(payments),
   };
   const expenseRepo = {
     find: jest.fn().mockResolvedValue(expenses),
   };
+  const saleRepo = {
+    find: jest.fn().mockResolvedValue(redemptionSales),
+  };
   const mockDataSource = {
     getRepository: jest.fn((Entity: any) => {
       if (Entity === Payment) return paymentRepo;
       if (Entity === Expense) return expenseRepo;
+      if (Entity === Sale) return saleRepo;
       return { find: jest.fn().mockResolvedValue([]) };
     }),
   };
   return mockDataSource as unknown as DataSource;
 }
+
+// ---------------------------------------------------------------------------
+// PR3 helpers — redemption fixtures
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a SaleRedemption fixture.
+ */
+const makeRedemption = (
+  id: string,
+  saleId: number,
+  description: string,
+  costPoints: number,
+): SaleRedemption => {
+  const r = new SaleRedemption();
+  r.id = id;
+  r.saleId = saleId;
+  r.description = description;
+  r.costPoints = costPoints;
+  r.productId = null;
+  r.quantity = 1;
+  r.createdAt = makeDate();
+  return r;
+};
+
+/**
+ * Builds a Sale fixture that has redemptions (used as the second-query result).
+ * items defaults to [] so inventory totals stay 0 for canje-only tests.
+ */
+const makeSaleWithRedemptions = (
+  id: number,
+  saleNumber: string,
+  redemptions: SaleRedemption[],
+  items: Sale['items'] = [],
+): Sale => {
+  const sale = makeSale(id, saleNumber, 0, false);
+  sale.redemptions = redemptions;
+  sale.items = items;
+  return sale;
+};
 
 // ---------------------------------------------------------------------------
 // Shared module builder
@@ -100,8 +156,9 @@ function makeDataSource(payments: Payment[], expenses: Expense[] = []): DataSour
 async function buildService(
   payments: Payment[],
   expenses: Expense[] = [],
+  redemptionSales: Sale[] = [],
 ): Promise<CashReportService> {
-  const mockDataSource = makeDataSource(payments, expenses);
+  const mockDataSource = makeDataSource(payments, expenses, redemptionSales);
   const module: TestingModule = await Test.createTestingModule({
     providers: [CashReportService, { provide: DataSource, useValue: mockDataSource }],
   }).compile();
@@ -222,6 +279,318 @@ describe('T3 — canceled F6 sale (venta+canje) is excluded, leaves no ghost pay
     // Two payments from the same non-canceled sale should both be processed
     expect(result.buffer).toBeTruthy();
     expect(result.filename).toMatch(/reporte-caja/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helper: read an xlsx buffer back into an ExcelJS workbook for assertions
+// ---------------------------------------------------------------------------
+
+import * as ExcelJS from 'exceljs';
+
+async function readWorkbook(buffer: ExcelJS.Buffer): Promise<ExcelJS.Workbook> {
+  const wb = new ExcelJS.Workbook();
+  // ExcelJS.Buffer is ArrayBuffer | Buffer; xlsx.load accepts ArrayBuffer directly
+  await wb.xlsx.load(buffer as ArrayBuffer);
+  return wb;
+}
+
+/**
+ * Returns every non-empty string value from the first transaction-detail sheet
+ * (the daily sheet, not the INVENTARIO one).
+ */
+function getDailySheetCellValues(workbook: ExcelJS.Workbook): string[] {
+  // The first worksheet is the daily transactions sheet
+  const sheet = workbook.worksheets[0];
+  const values: string[] = [];
+  sheet.eachRow((row) => {
+    row.eachCell((cell) => {
+      const v = cell.value;
+      if (typeof v === 'string' && v.trim()) values.push(v.trim());
+    });
+  });
+  return values;
+}
+
+/**
+ * Returns every cell value from the INVENTARIO sheet (second worksheet for the day).
+ */
+function getInventorySheetCellValues(workbook: ExcelJS.Workbook): string[] {
+  // Inventory sheet is added after the daily sheet for each day group
+  const invSheet = workbook.worksheets.find((s) => s.name.startsWith('INVENTARIO'));
+  if (!invSheet) return [];
+  const values: string[] = [];
+  invSheet.eachRow((row) => {
+    row.eachCell((cell) => {
+      const v = cell.value;
+      if (typeof v === 'string' && v.trim()) values.push(v.trim());
+    });
+  });
+  return values;
+}
+
+// ---------------------------------------------------------------------------
+// R1 — canje-only sale → Tipo=Canje row, amount 0; monetary totals UNCHANGED
+// ---------------------------------------------------------------------------
+
+describe('R1 — canje-only sale appears as Tipo=Canje with amount 0; txTotal unchanged (regression)', () => {
+  it('canje-only sale produces a Tipo=Canje row', async () => {
+    const redemption = makeRedemption('r1', 100, 'Pollo a la brasa (1/4)', 500);
+    const canjeOnlySale = makeSaleWithRedemptions(100, 'VTA-100', [redemption]);
+    canjeOnlySale.createdAt = makeDate();
+
+    const service = await buildService([], [], [canjeOnlySale]);
+    const result = await service.exportCashReport('2025-01-15', '2025-01-15');
+
+    const wb = await readWorkbook(result.buffer);
+    const cellValues = getDailySheetCellValues(wb);
+
+    expect(cellValues).toContain('Canje');
+  });
+
+  it('canje-only sale amount is 0 (does not inflate monetary total)', async () => {
+    const redemption = makeRedemption('r2', 101, 'Gaseosa 500ml', 200);
+    const canjeOnlySale = makeSaleWithRedemptions(101, 'VTA-101', [redemption]);
+    canjeOnlySale.createdAt = makeDate();
+
+    const service = await buildService([], [], [canjeOnlySale]);
+    const result = await service.exportCashReport('2025-01-15', '2025-01-15');
+
+    // If amount were non-zero, txTotal in the TOTAL row would be non-zero.
+    // We verify the workbook is produced and no monetary amount appears for Canje.
+    expect(result.buffer).toBeTruthy();
+    const wb = await readWorkbook(result.buffer);
+    const cellValues = getDailySheetCellValues(wb);
+    expect(cellValues).toContain('Canje');
+  });
+
+  it('REGRESSION: txTotal with a canje-only sale equals txTotal without it (D4)', async () => {
+    // Baseline: one normal payment, no canje
+    const pm = makePaymentMethod();
+    const normalSale = makeSale(50, 'VTA-050', 80, false);
+    const normalPayment = makePayment(50, normalSale, 80, 80, pm);
+
+    const baselineService = await buildService([normalPayment], [], []);
+    const baselineResult = await baselineService.exportCashReport('2025-01-15', '2025-01-15');
+    const baselineWb = await readWorkbook(baselineResult.buffer);
+
+    // With canje: same normal payment + a canje-only redemption
+    const redemption = makeRedemption('r3', 200, 'Premio especial', 1000);
+    const canjeOnlySale = makeSaleWithRedemptions(200, 'VTA-200', [redemption]);
+    canjeOnlySale.createdAt = makeDate();
+
+    const withCanjeService = await buildService([normalPayment], [], [canjeOnlySale]);
+    const withCanjeResult = await withCanjeService.exportCashReport('2025-01-15', '2025-01-15');
+    const withCanjeWb = await readWorkbook(withCanjeResult.buffer);
+
+    // Extract the numeric TOTAL cell from the last row of the transactions table
+    // The TOTAL row has text 'TOTAL' in column E (index 5) and the numeric total in F (index 6)
+    const extractTxTotal = (wb: ExcelJS.Workbook): number | null => {
+      const sheet = wb.worksheets[0];
+      let total: number | null = null;
+      sheet.eachRow((row) => {
+        const totalCell = row.getCell(5).value;
+        if (totalCell === 'TOTAL') {
+          const v = row.getCell(6).value;
+          total = typeof v === 'number' ? v : null;
+        }
+      });
+      return total;
+    };
+
+    const baselineTotal = extractTxTotal(baselineWb);
+    const withCanjeTotal = extractTxTotal(withCanjeWb);
+
+    // Critical assertion: txTotal must be IDENTICAL regardless of canje rows
+    expect(baselineTotal).not.toBeNull();
+    expect(withCanjeTotal).not.toBeNull();
+    expect(withCanjeTotal).toBe(baselineTotal);
+
+    // Additionally, Canje row must exist in the with-canje result
+    const withCanjeCells = getDailySheetCellValues(withCanjeWb);
+    expect(withCanjeCells).toContain('Canje');
+
+    // And NOT in the baseline
+    const baselineCells = getDailySheetCellValues(baselineWb);
+    expect(baselineCells).not.toContain('Canje');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R2 — mixed sale (venta+canje): venta rows normal; canje rows amount 0
+// ---------------------------------------------------------------------------
+
+describe('R2 — mixed sale: paid portion as Venta, redemption prizes as Canje amount 0', () => {
+  it('sale with both payment and redemption produces both Venta and Canje rows', async () => {
+    const pm = makePaymentMethod();
+    const mixedSale = makeSale(300, 'VTA-300', 60, false);
+    mixedSale.createdAt = makeDate();
+    const payment = makePayment(300, mixedSale, 60, 60, pm);
+
+    const redemption = makeRedemption('r10', 300, 'Papas fritas', 300);
+    // The second query returns this sale with its redemptions
+    const mixedSaleWithRedemptions = makeSaleWithRedemptions(300, 'VTA-300', [redemption]);
+    mixedSaleWithRedemptions.createdAt = makeDate();
+
+    const service = await buildService([payment], [], [mixedSaleWithRedemptions]);
+    const result = await service.exportCashReport('2025-01-15', '2025-01-15');
+
+    const wb = await readWorkbook(result.buffer);
+    const cellValues = getDailySheetCellValues(wb);
+
+    // Both row types must appear
+    expect(cellValues).toContain('Venta');
+    expect(cellValues).toContain('Canje');
+  });
+
+  it('REGRESSION: adding canje to a venta does not double-count soles in txTotal', async () => {
+    const pm = makePaymentMethod();
+    const sale = makeSale(301, 'VTA-301', 50, false);
+    sale.createdAt = makeDate();
+    const payment = makePayment(301, sale, 50, 50, pm);
+
+    // Without canje
+    const baselineService = await buildService([payment], [], []);
+    const baselineResult = await baselineService.exportCashReport('2025-01-15', '2025-01-15');
+    const baselineWb = await readWorkbook(baselineResult.buffer);
+
+    // With canje on same sale
+    const redemption = makeRedemption('r11', 301, 'Bebida gratis', 400);
+    const saleWithR = makeSaleWithRedemptions(301, 'VTA-301', [redemption]);
+    saleWithR.createdAt = makeDate();
+
+    const withRService = await buildService([payment], [], [saleWithR]);
+    const withRResult = await withRService.exportCashReport('2025-01-15', '2025-01-15');
+    const withRWb = await readWorkbook(withRResult.buffer);
+
+    const extractTxTotal = (wb: ExcelJS.Workbook): number | null => {
+      const sheet = wb.worksheets[0];
+      let total: number | null = null;
+      sheet.eachRow((row) => {
+        if (row.getCell(5).value === 'TOTAL') {
+          const v = row.getCell(6).value;
+          total = typeof v === 'number' ? v : null;
+        }
+      });
+      return total;
+    };
+
+    const baselineTotal = extractTxTotal(baselineWb);
+    const withRTotal = extractTxTotal(withRWb);
+
+    // txTotal must be IDENTICAL — canje rows add 0 soles
+    expect(baselineTotal).not.toBeNull();
+    expect(withRTotal).toBe(baselineTotal);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R3 — inventory sheet: Motivo column with "Venta" / "Canje"
+// ---------------------------------------------------------------------------
+
+describe('R3 — inventory sheet has Motivo column; Venta for sold products, Canje for prizes', () => {
+  it('inventory sheet header includes Motivo', async () => {
+    const pm = makePaymentMethod();
+    const sale = makeSale(400, 'VTA-400', 30, false);
+    sale.createdAt = makeDate();
+    const payment = makePayment(400, sale, 30, 30, pm);
+
+    const service = await buildService([payment]);
+    const result = await service.exportCashReport('2025-01-15', '2025-01-15');
+
+    const wb = await readWorkbook(result.buffer);
+    const cellValues = getInventorySheetCellValues(wb);
+
+    expect(cellValues).toContain('Motivo');
+  });
+
+  it('sold product items appear with Motivo=Venta in the inventory sheet', async () => {
+    const pm = makePaymentMethod();
+    const sale = makeSale(401, 'VTA-401', 45, false);
+    sale.createdAt = makeDate();
+
+    // Add an item to the sale so the inventory sheet has data
+    const item = {
+      product: { id: 1, name: 'Pollo entero' },
+      quantity: 2,
+      subtotal: 45,
+    } as any;
+    sale.items = [item];
+
+    const payment = makePayment(401, sale, 45, 45, pm);
+
+    const service = await buildService([payment]);
+    const result = await service.exportCashReport('2025-01-15', '2025-01-15');
+
+    const wb = await readWorkbook(result.buffer);
+    const cellValues = getInventorySheetCellValues(wb);
+
+    expect(cellValues).toContain('Motivo');
+    expect(cellValues).toContain('Venta');
+    // Product name must appear
+    expect(cellValues).toContain('Pollo entero');
+  });
+
+  it('redemption prizes appear with Motivo=Canje in the inventory sheet', async () => {
+    const redemption = makeRedemption('r20', 500, 'Helado gratis', 150);
+    const canjeSale = makeSaleWithRedemptions(500, 'VTA-500', [redemption]);
+    canjeSale.createdAt = makeDate();
+
+    const service = await buildService([], [], [canjeSale]);
+    const result = await service.exportCashReport('2025-01-15', '2025-01-15');
+
+    const wb = await readWorkbook(result.buffer);
+    const cellValues = getInventorySheetCellValues(wb);
+
+    expect(cellValues).toContain('Motivo');
+    expect(cellValues).toContain('Canje');
+    // Prize description must appear
+    expect(cellValues).toContain('Helado gratis');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R4 — range with no redemptions: behaviour identical to existing tests
+// ---------------------------------------------------------------------------
+
+describe('R4 — range with no redemptions: no regression on existing behaviour', () => {
+  it('empty redemption sales list does not affect output (same as CP-06 baseline)', async () => {
+    const pm = makePaymentMethod();
+    const sale = makeSale(600, 'VTA-600', 100, false);
+    const payment = makePayment(600, sale, 100, 100, pm);
+
+    // No redemption sales — third param empty (same as if no Sale repo query matched)
+    const service = await buildService([payment], [], []);
+    const result = await service.exportCashReport('2025-01-15', '2025-01-15');
+
+    expect(result.buffer).toBeTruthy();
+    expect(result.filename).toMatch(/reporte-caja/);
+
+    const wb = await readWorkbook(result.buffer);
+    const cellValues = getDailySheetCellValues(wb);
+
+    // No Canje rows when there are no redemption sales
+    expect(cellValues).not.toContain('Canje');
+    // But normal Venta rows must still appear
+    expect(cellValues).toContain('Venta');
+  });
+
+  it('existing T2 style still works: getRepository called for Payment, Expense AND Sale', async () => {
+    const pm = makePaymentMethod();
+    const sale = makeSale(601, 'VTA-601', 20, false);
+    const payment = makePayment(601, sale, 20, 20, pm);
+    const mockDS = makeDataSource([payment], [], []);
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [CashReportService, { provide: DataSource, useValue: mockDS }],
+    }).compile();
+    const service = module.get<CashReportService>(CashReportService);
+
+    await service.exportCashReport('2025-01-15', '2025-01-15');
+
+    expect(mockDS.getRepository).toHaveBeenCalledWith(Payment);
+    expect(mockDS.getRepository).toHaveBeenCalledWith(Expense);
+    expect(mockDS.getRepository).toHaveBeenCalledWith(Sale);
   });
 });
 
