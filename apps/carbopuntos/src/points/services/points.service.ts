@@ -385,66 +385,63 @@ export class PointsService {
   async reverse(input: ReverseInput): Promise<PointsMovement> {
     return this.withRetry(() =>
       this.customerRepo.manager.transaction(async (manager) => {
-        // Idempotencia: si ya existe la reversa, retornarla (contrato pelado).
-        const existingReverse = await manager.findOne(PointsMovement, {
+        // Primary idempotency: same key → return existing movement unchanged (D15).
+        const existingByKey = await manager.findOne(PointsMovement, {
           where: { idempotencyKey: input.idempotencyKey },
         });
-        if (existingReverse) {
-          return existingReverse;
-        }
+        if (existingByKey) return existingByKey;
 
         const { customer, balance } = await this.resolveCustomer(manager, input.customerDni);
 
-        // Busca el movimiento de acumulación original para ese sale_ref.
-        const accrual = await manager.findOne(PointsMovement, {
+        // Secondary idempotency: if a non-voided reversal already exists for this
+        // saleRef (even under a different key), return it — double-cancel guard (D6).
+        const existingReversalForSale = await manager.findOne(PointsMovement, {
           where: {
             customerId: customer.id,
             saleRef: input.saleRef,
-            type: 'accrual' as MovementType,
+            type: 'reversal' as MovementType,
             isVoided: false,
           },
         });
-
-        const balanceBefore = balance.balance;
-
-        // C15: no-op si no hubo acumulación previa. En vez de un objeto especial,
-        // creamos un movimiento de reversa de 0 puntos (saldo intacto) para que el
-        // contrato PointsMovement se cumpla SIEMPRE (lo que el client espera).
-        if (!accrual) {
+        if (existingReversalForSale) {
           this.logger.log(
-            `[reverse] No-op para DNI ${input.customerDni}, sale_ref ${input.saleRef} — sin acumulación previa`,
+            `[reverse] Idempotencia saleRef: ya existe reversa no anulada para ${input.saleRef} — retornando sin doble aplicación`,
           );
-          const { movement } = await this.insertMovementIdempotent(manager, {
-            customerId: customer.id,
-            type: 'reversal' as MovementType,
-            points: 0,
-            balanceBefore,
-            balanceAfter: balanceBefore,
-            sede: input.sede,
-            userRef: input.userRef,
-            saleRef: input.saleRef,
-            detail:
-              input.detail ?? 'No-op: sin acumulación previa para este sale_ref; saldo intacto',
-            idempotencyKey: input.idempotencyKey,
-            isVoided: false,
-          });
-          return movement;
+          return existingReversalForSale;
         }
 
-        // Topar en 0 si la reversa excedería el saldo (D6).
-        const maxReversable = balanceBefore; // No puede quedar negativo.
-        const actualReverse = Math.min(accrual.points, maxReversable);
-        const balanceAfter = balanceBefore - actualReverse;
+        // Collect all non-voided movements for this saleRef (accrual + redeem + operation).
+        // Exclude any prior reversal rows from the net sum — we don't reverse a reversal.
+        const allMovements = await manager.find(PointsMovement, {
+          where: { customerId: customer.id, saleRef: input.saleRef, isVoided: false },
+        });
+        const saleMovements = allMovements.filter((m) => m.type !== 'reversal');
+        const net = saleMovements.reduce((sum, m) => sum + m.points, 0);
 
-        const detail =
-          accrual.points > maxReversable
-            ? `Reversa parcial: se restaron ${actualReverse} pts (se solicitaron ${accrual.points}); saldo topado en 0`
-            : (input.detail ?? null);
+        const balanceBefore = balance.balance;
+        // requestedDelta undoes the net effect of the sale: if sale net +10, reverse -10.
+        // Floor (D6): balance must not go below 0; cap the removal.
+        // Use `|| 0` to normalize JavaScript's -0 to 0 when net is 0.
+        const requestedDelta = -net;
+        const actualDelta = Math.max(requestedDelta, -balanceBefore) || 0;
+        const balanceAfter = balanceBefore + actualDelta;
+
+        let detail: string | null;
+        if (saleMovements.length === 0) {
+          detail = input.detail ?? 'No-op: no movements found for this saleRef; balance unchanged';
+          this.logger.log(
+            `[reverse] No-op para DNI ${input.customerDni}, saleRef ${input.saleRef} — sin movimientos previos`,
+          );
+        } else if (actualDelta !== requestedDelta) {
+          detail = `Partial reversal: applied ${actualDelta} pts (requested ${requestedDelta}); balance floored at 0`;
+        } else {
+          detail = input.detail ?? null;
+        }
 
         const { movement, created } = await this.insertMovementIdempotent(manager, {
           customerId: customer.id,
           type: 'reversal' as MovementType,
-          points: -actualReverse,
+          points: actualDelta,
           balanceBefore,
           balanceAfter,
           sede: input.sede,
@@ -456,8 +453,13 @@ export class PointsService {
         });
         if (!created) return movement;
 
-        await this.updateBalance(manager, balance, balanceAfter);
+        if (actualDelta !== 0) {
+          await this.updateBalance(manager, balance, balanceAfter);
+        }
 
+        this.logger.log(
+          `[reverse] DNI ${input.customerDni} saleRef ${input.saleRef}: net=${net}, reversal=${actualDelta} pts (${balanceBefore} → ${balanceAfter})`,
+        );
         return movement;
       }),
     );

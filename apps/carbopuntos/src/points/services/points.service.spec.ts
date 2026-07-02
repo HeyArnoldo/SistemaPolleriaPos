@@ -222,38 +222,10 @@ describe('PointsService', () => {
     });
 
     it('debe restar los puntos acumulados al revertir, topando el saldo en 0 si excede (D6)', async () => {
-      const customer = makeCustomer();
       const balance = makeBalance(5); // Saldo 5, reversa de 10 → topa en 0
       const accrualMovement = makeMovement({ type: 'accrual', points: 10, saleRef: 'SALE-1' });
 
-      const manager = {
-        findOne: jest
-          .fn()
-          .mockImplementation(
-            (entity: new () => unknown, opts: { where: Record<string, unknown> }) => {
-              if (entity === Customer) return Promise.resolve(customer);
-              if (entity === PointsBalance) return Promise.resolve(balance);
-              // Primero busca idempotencyKey (no existe), luego accrual por saleRef.
-              if (entity === PointsMovement) {
-                if ('idempotencyKey' in opts.where) return Promise.resolve(null);
-                if ('saleRef' in opts.where) return Promise.resolve(accrualMovement);
-              }
-              return Promise.resolve(null);
-            },
-          ),
-        create: jest
-          .fn()
-          .mockImplementation((_: unknown, data: unknown) => ({ ...(data as object) })),
-        save: jest
-          .fn()
-          .mockImplementation((obj: unknown) =>
-            Promise.resolve({ ...(obj as object), id: 'new-id' }),
-          ),
-      } as unknown as jest.Mocked<EntityManager>;
-
-      (customerRepo.manager.transaction as jest.Mock).mockImplementation(
-        async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
-      );
+      mockReverseTransaction({ balance, movementsForSaleRef: [accrualMovement] });
 
       const result = await service.reverse({
         customerDni: '12345678',
@@ -647,35 +619,10 @@ describe('PointsService', () => {
     });
 
     it('reversa válida: devuelve el PointsMovement de reversa', async () => {
-      const customer = makeCustomer();
       const balance = makeBalance(50);
       const accrualMovement = makeMovement({ type: 'accrual', points: 20, saleRef: 'SALE-1' });
-      const manager = {
-        findOne: jest
-          .fn()
-          .mockImplementation(
-            (entity: new () => unknown, opts: { where: Record<string, unknown> }) => {
-              if (entity === Customer) return Promise.resolve(customer);
-              if (entity === PointsBalance) return Promise.resolve(balance);
-              if (entity === PointsMovement) {
-                if ('idempotencyKey' in opts.where) return Promise.resolve(null);
-                if ('saleRef' in opts.where) return Promise.resolve(accrualMovement);
-              }
-              return Promise.resolve(null);
-            },
-          ),
-        create: jest
-          .fn()
-          .mockImplementation((_: unknown, data: unknown) => ({ ...(data as object) })),
-        save: jest
-          .fn()
-          .mockImplementation((obj: unknown) =>
-            Promise.resolve({ ...(obj as object), id: 'rev-id' }),
-          ),
-      } as unknown as jest.Mocked<EntityManager>;
-      (customerRepo.manager.transaction as jest.Mock).mockImplementation(
-        async (fn: (m: EntityManager) => Promise<unknown>) => fn(manager),
-      );
+
+      mockReverseTransaction({ balance, movementsForSaleRef: [accrualMovement] });
 
       const result = await service.reverse({
         customerDni: '12345678',
