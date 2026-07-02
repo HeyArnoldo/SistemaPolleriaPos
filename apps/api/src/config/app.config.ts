@@ -13,6 +13,31 @@ export function expiresToMs(value: string): number {
   return n * mult * 1000;
 }
 
+/** Default TTL para el token de challenge 2FA cuando el valor es inválido/ausente. */
+export const CHALLENGE_EXPIRES_DEFAULT_MS = 5 * 60 * 1000; // 5m
+/** Cota máxima dura del TTL del challenge 2FA. */
+export const CHALLENGE_EXPIRES_MAX_MS = 15 * 60 * 1000; // 15m
+
+/**
+ * TTL en ms para el token de challenge 2FA (CP-12), con política FAIL-CLOSED.
+ *
+ * A diferencia de expiresToMs (que hace fallback al default de sesión de 7 días
+ * ante un valor no parseable), el challenge DEBE ser corto: un valor malformado
+ * o ausente cae al default corto (5m) y un valor demasiado grande se recorta al
+ * máximo (15m). Nunca puede acuñar un token de challenge de 7 días.
+ */
+export function challengeExpiresToMs(value: string | undefined): number {
+  if (value === undefined) return CHALLENGE_EXPIRES_DEFAULT_MS;
+  const m = /^(\d+)([dhms])?$/.exec(value.trim());
+  if (!m) return CHALLENGE_EXPIRES_DEFAULT_MS;
+  const n = parseInt(m[1] ?? '5', 10);
+  const unit = m[2] ?? 's';
+  const mult = { d: 86400, h: 3600, m: 60, s: 1 }[unit] ?? 1;
+  const ms = n * mult * 1000;
+  // Clamp: un valor sobredimensionado falla CERRADO a la ventana corta máxima.
+  return Math.min(ms, CHALLENGE_EXPIRES_MAX_MS);
+}
+
 /**
  * Opciones de la cookie de sesión. En producción detrás de Traefik/Coolify:
  * COOKIE_SECURE=true (y main.ts ya setea trust proxy). Para compartir entre
