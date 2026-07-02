@@ -18,6 +18,9 @@ import { Role } from '../common/enums/role.enum';
 import { ROLES_KEY } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { LoginAudit } from './entities/login-audit.entity';
+
+type AnyHandler = (...args: unknown[]) => unknown;
 
 function makeUser(overrides: Partial<User> = {}): User {
   const user = new User();
@@ -104,7 +107,7 @@ describe('AuthController.login — context capture (T4.1)', () => {
 describe('AuthController GET /auth/login-audit — guard metadata (T4.2)', () => {
   it('route exists on the controller at path "login-audit"', () => {
     const proto = AuthController.prototype;
-    const handler = proto['listLoginAudit'] as Function | undefined;
+    const handler = proto['listLoginAudit'] as AnyHandler | undefined;
     expect(handler).toBeDefined();
     const path = Reflect.getMetadata(PATH_METADATA, handler!) as string;
     expect(path).toBe('login-audit');
@@ -112,22 +115,24 @@ describe('AuthController GET /auth/login-audit — guard metadata (T4.2)', () =>
 
   it('is a GET endpoint', () => {
     const proto = AuthController.prototype;
-    const handler = proto['listLoginAudit'] as Function;
+    const handler = proto['listLoginAudit'] as AnyHandler;
     const method = Reflect.getMetadata(METHOD_METADATA, handler) as number;
     expect(method).toBe(RequestMethod.GET);
   });
 
   it('requires Admin role via @Roles decorator', () => {
     const proto = AuthController.prototype;
-    const handler = proto['listLoginAudit'] as Function;
+    const handler = proto['listLoginAudit'] as AnyHandler;
     const roles = Reflect.getMetadata(ROLES_KEY, handler) as Role[];
     expect(roles).toContain(Role.Admin);
   });
 
   it('has JwtAuthGuard and RolesGuard in @UseGuards', () => {
     const proto = AuthController.prototype;
-    const handler = proto['listLoginAudit'] as Function;
-    const guards = Reflect.getMetadata(GUARDS_METADATA, handler) as Function[];
+    const handler = proto['listLoginAudit'] as AnyHandler;
+    const guards = Reflect.getMetadata(GUARDS_METADATA, handler) as Array<{
+      name: string;
+    }>;
     const guardNames = guards.map((g) => g.name);
     expect(guardNames).toContain('JwtAuthGuard');
     expect(guardNames).toContain('RolesGuard');
@@ -136,7 +141,7 @@ describe('AuthController GET /auth/login-audit — guard metadata (T4.2)', () =>
   it('returns paginated data from LoginAuditService.list', async () => {
     const { controller, mockAudit } = buildController();
     const page = {
-      data: [new (require('./entities/login-audit.entity').LoginAudit)()],
+      data: [new LoginAudit()],
       page: 1,
       limit: 20,
       total: 1,
@@ -166,7 +171,7 @@ describe('AuthController GET /auth/login-audit — guard metadata (T4.2)', () =>
 
     // Simulate execution context where handler has @Roles(Admin)
     const proto = AuthController.prototype;
-    const handler = proto['listLoginAudit'] as Function;
+    const handler = proto['listLoginAudit'] as AnyHandler;
     const mockCtx = {
       getHandler: () => handler,
       getClass: () => AuthController,
@@ -182,7 +187,7 @@ describe('AuthController GET /auth/login-audit — guard metadata (T4.2)', () =>
     const guard = new RolesGuard(reflector);
 
     const proto = AuthController.prototype;
-    const handler = proto['listLoginAudit'] as Function;
+    const handler = proto['listLoginAudit'] as AnyHandler;
     const mockCtx = {
       getHandler: () => handler,
       getClass: () => AuthController,
