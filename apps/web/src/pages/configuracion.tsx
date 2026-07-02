@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMe } from '@/hooks/use-auth';
 import { canAccessRoute } from '@/lib/permissions';
+import { TotpEnrollmentCard } from '@/components/dashboard/configuracion/totp-enrollment-card';
 import { PaymentMethodsCard } from '@/components/dashboard/configuracion/payment-methods-card';
 import { ResetFinancialCard } from '@/components/dashboard/configuracion/reset-financial-card';
 import { PrinterSettingsCard } from '@/components/dashboard/configuracion/printer-settings-card';
@@ -103,6 +104,8 @@ export default function ConfiguracionPage() {
           isElectron={isElectron}
         />
       </div>
+
+      {user && <TotpEnrollmentCard user={user} />}
 
       <PaymentMethodsCard />
 

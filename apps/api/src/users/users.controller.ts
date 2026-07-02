@@ -25,10 +25,19 @@ import {
 import { UsersService } from './users.service';
 import { User } from './user.entity';
 
-function stripPasswordHash(user: User): Omit<User, 'passwordHash'> {
-  const { passwordHash: _omitted, ...safe } = user as User & { passwordHash: string };
-  void _omitted;
-  return safe as Omit<User, 'passwordHash'>;
+function stripPasswordHash(user: User): Omit<User, 'passwordHash' | 'totpSecret'> {
+  // totpSecret is an AES-256-GCM envelope — never expose in any user API response.
+  const {
+    passwordHash: _pw,
+    totpSecret: _ts,
+    ...safe
+  } = user as User & {
+    passwordHash: string;
+    totpSecret: string | null;
+  };
+  void _pw;
+  void _ts;
+  return safe;
 }
 
 @UseGuards(JwtAuthGuard, RolesGuard)

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
@@ -22,6 +22,10 @@ export interface UpdateUserDto {
   firstName?: string;
   lastName?: string;
   avatarUrl?: string | null;
+  /** AES-256-GCM envelope for TOTP secret (CP-12). Blocked for sistema user. */
+  totpSecret?: string | null;
+  /** Whether TOTP is active (CP-12). Blocked for sistema user. */
+  totpEnabled?: boolean;
 }
 
 @Injectable()
@@ -78,8 +82,23 @@ export class UsersService {
     return this.userRepo.find({ relations: ['profile'] });
   }
 
+  private assertNotSystemImmutable(user: User, dto: UpdateUserDto): void {
+    if (!user.isSystem) return;
+    const blocked =
+      dto.username !== undefined ||
+      dto.role !== undefined ||
+      dto.isActive !== undefined ||
+      dto.passwordHash !== undefined ||
+      dto.totpEnabled !== undefined ||
+      dto.totpSecret !== undefined;
+    if (blocked) {
+      throw new ForbiddenException('The sistema user is immovable and cannot be modified.');
+    }
+  }
+
   async update(id: number, dto: UpdateUserDto): Promise<User> {
     const user = await this.findOne(id);
+    this.assertNotSystemImmutable(user, dto);
     if (dto.username !== undefined) user.username = dto.username;
     if (dto.isActive !== undefined) user.isActive = dto.isActive;
     if (dto.role !== undefined) user.role = dto.role;
@@ -87,12 +106,15 @@ export class UsersService {
     if (dto.firstName !== undefined) user.profile.firstName = dto.firstName;
     if (dto.lastName !== undefined) user.profile.lastName = dto.lastName;
     if (dto.avatarUrl !== undefined) user.profile.avatarUrl = dto.avatarUrl;
+    if (dto.totpSecret !== undefined) user.totpSecret = dto.totpSecret;
+    if (dto.totpEnabled !== undefined) user.totpEnabled = dto.totpEnabled;
     // @BeforeInsert only fires on INSERT — UPDATE path is safe from double-hashing
     return this.userRepo.save(user);
   }
 
   async deactivate(id: number): Promise<User> {
     const user = await this.findOne(id);
+    this.assertNotSystemImmutable(user, { isActive: false });
     user.isActive = false;
     return this.userRepo.save(user);
   }
