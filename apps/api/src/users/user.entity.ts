@@ -24,6 +24,9 @@ export class User {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  @Column({ type: 'boolean', default: false, name: 'is_system' })
+  isSystem: boolean = false;
+
   @Column({ type: 'varchar', length: 20, default: Role.Cashier })
   role: Role;
 

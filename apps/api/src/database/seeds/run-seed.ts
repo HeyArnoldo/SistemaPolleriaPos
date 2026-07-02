@@ -160,6 +160,37 @@ async function run(): Promise<void> {
     console.log(`[seed] cashier already exists: ${cashierUsername}`);
   }
 
+  // ── Sistema user (Groow support break-glass) ─────────────────────────────
+  const sistemaPassword = process.env.SYSTEM_USER_PASSWORD;
+
+  if (sistemaPassword) {
+    const existingSistema = await userRepo.findOne({ where: { username: 'sistema' } });
+    if (!existingSistema) {
+      const sistemaProfile = await profileRepo.save(
+        profileRepo.create({ firstName: 'Sistema', lastName: 'Groow' }),
+      );
+      const sistemaPasswordHash = await bcrypt.hash(sistemaPassword, rounds);
+      await userRepo
+        .createQueryBuilder()
+        .insert()
+        .into(User)
+        .values({
+          username: 'sistema',
+          passwordHash: sistemaPasswordHash,
+          role: Role.Admin,
+          isActive: true,
+          isSystem: true,
+          profile: sistemaProfile,
+        })
+        .execute();
+      console.log('[seed] sistema user created.');
+    } else {
+      console.log('[seed] sistema user already exists — skipping.');
+    }
+  } else {
+    console.log('[seed] SYSTEM_USER_PASSWORD not set — skipping sistema user.');
+  }
+
   await dataSource.destroy();
   console.log('[seed] done.');
 }

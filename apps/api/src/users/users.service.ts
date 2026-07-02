@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
@@ -78,8 +78,21 @@ export class UsersService {
     return this.userRepo.find({ relations: ['profile'] });
   }
 
+  private assertNotSystemImmutable(user: User, dto: UpdateUserDto): void {
+    if (!user.isSystem) return;
+    const blocked =
+      dto.username !== undefined ||
+      dto.role !== undefined ||
+      dto.isActive !== undefined ||
+      dto.passwordHash !== undefined;
+    if (blocked) {
+      throw new ForbiddenException('The sistema user is immovable and cannot be modified.');
+    }
+  }
+
   async update(id: number, dto: UpdateUserDto): Promise<User> {
     const user = await this.findOne(id);
+    this.assertNotSystemImmutable(user, dto);
     if (dto.username !== undefined) user.username = dto.username;
     if (dto.isActive !== undefined) user.isActive = dto.isActive;
     if (dto.role !== undefined) user.role = dto.role;
@@ -93,6 +106,7 @@ export class UsersService {
 
   async deactivate(id: number): Promise<User> {
     const user = await this.findOne(id);
+    this.assertNotSystemImmutable(user, { isActive: false });
     user.isActive = false;
     return this.userRepo.save(user);
   }
