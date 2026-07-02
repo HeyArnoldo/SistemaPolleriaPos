@@ -11,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Sale } from '../entities/sale.entity';
 import { SaleItem } from '../entities/sale-item.entity';
+import { SaleRedemption } from '../entities/sale-redemption.entity';
 import { Payment } from '../entities/payment.entity';
 import { PaymentMethod } from '../entities/payment-method.entity';
 import { Product } from '../../inventory/entities/product.entity';
@@ -132,10 +133,10 @@ export class SalesService {
   }
 
   /**
-   * Persists the sale and its children (items/payments) in a single local
-   * transaction, setting the sale_id FK explicitly on each child. Returns the
-   * fully-hydrated Sale. The puntajeMap is populated as a side effect so the
-   * caller can compute points afterwards.
+   * Persists the sale and its children (items/payments/redemptions) in a single
+   * local transaction, setting the sale_id FK explicitly on each child (GOTCHA #6).
+   * Returns the fully-hydrated Sale. The puntajeMap is populated as a side effect
+   * so the caller can compute points afterwards.
    */
   private async persistSale(
     dto: CreateSaleDto,
@@ -202,9 +203,30 @@ export class SalesService {
         );
       }
 
+      // Persist redemption rows inside the SAME transaction, setting the sale_id FK
+      // explicitly (GOTCHA #6 — do not rely on cascade for child FK population).
+      for (const redemptionDto of dto.redemptions ?? []) {
+        await manager.save(
+          manager.create(SaleRedemption, {
+            saleId: created.id,
+            description: redemptionDto.description,
+            costPoints: redemptionDto.costPoints,
+            productId: null,
+            quantity: 1,
+          }),
+        );
+      }
+
       const full = await manager.findOne(Sale, {
         where: { id: created.id },
-        relations: ['user', 'items', 'items.product', 'payments', 'payments.paymentMethod'],
+        relations: [
+          'user',
+          'items',
+          'items.product',
+          'payments',
+          'payments.paymentMethod',
+          'redemptions',
+        ],
       });
       return full ?? created;
     });
@@ -257,7 +279,17 @@ export class SalesService {
     // Step 2: hub confirmed the debit — persist the local sale.
     try {
       const sale = await this.persistSale(dto, user, saleNumber, subtotal, totalAmount, puntajeMap);
-      if (carbopuntos) sale.carbopuntos = carbopuntos;
+      if (carbopuntos) {
+        sale.carbopuntos = {
+          ...carbopuntos,
+          // Mirror dto.redemptions so the ticket front-end can render "PREMIOS CANJEADOS"
+          // without a second query. The persisted SaleRedemption rows are the durable copy.
+          redemptions: (dto.redemptions ?? []).map((r) => ({
+            description: r.description,
+            costPoints: r.costPoints,
+          })),
+        };
+      }
       return sale;
     } catch (persistErr: unknown) {
       // The debit already happened in the hub but the local write failed. Issue a
