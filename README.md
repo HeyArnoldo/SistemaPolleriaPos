@@ -46,6 +46,70 @@ contratos de datos.
 
 ---
 
+## Sistema de puntos CarboPuntos
+
+Fidelización multi-sede integrada con el POS. Los clientes acumulan puntos en
+cada compra y los canjean por premios; el saldo es global (vale en todas las
+sedes).
+
+### Flujos disponibles
+
+| Código | Flujo                            | Descripción                                                   | Requiere hub |
+| ------ | -------------------------------- | ------------------------------------------------------------- | ------------ |
+| F1     | Venta sin cliente                | Cobro anónimo; no genera puntos                               | No           |
+| F2     | Afiliación de cliente nuevo      | Crea el cliente en el hub vía API de DNI                      | Sí           |
+| F3     | Vinculación de cliente existente | Busca al cliente y obtiene su saldo actual                    | Sí           |
+| F4     | Venta con acumulación            | Venta vinculada a un cliente; acumula puntos por producto     | Sí           |
+| F5     | Solo canje                       | Canje de puntos por premio sin compra monetaria (total = 0)   | Sí           |
+| F6     | Venta + canje                    | Compra y canje en un solo acto; acumulación y débito atómicos | Sí           |
+
+### Hub CarboPuntos (`@app/carbopuntos-client`)
+
+El paquete `@app/carbopuntos-client` es **opcional en desarrollo local**. Sin
+hub configurado, las ventas con cliente simplemente encolan el movimiento de
+puntos como pendiente (`@app/carbopuntos-pending`) y lo reintentan cuando el hub
+esté disponible. Las ventas sin cliente (F1) no se ven afectadas.
+
+### Cancelación de venta con canje (CP-05 / CP-06)
+
+Al cancelar una venta que involucra puntos, el hub aplica una **reversa neta**
+sobre todos los movimientos de esa venta:
+
+- **Canje-only (F5):** se devuelven los puntos canjeados (el hub suma el neto y
+  emite una reversa positiva).
+- **Venta + acumulación (F4):** se restan los puntos acumulados.
+- **Venta + canje (F6):** se calcula el neto de acumulación y canje; si se
+  anulan entre sí, la reversa es 0 y el saldo queda intacto.
+- **Idempotente:** cancelar la misma venta dos veces no duplica la reversa.
+- **Caja:** las ventas canceladas quedan excluidas del reporte (`isCanceled=false`
+  en la consulta de pagos). Los canjes-only (total monetario = 0) no generan
+  filas de pago y nunca distorsionan los totales de caja.
+
+Para los detalles completos ver
+[`docs/CARBOPUNTOS-CASOS-Y-FLUJOS.md`](docs/CARBOPUNTOS-CASOS-Y-FLUJOS.md) y
+los artefactos de diseño en
+[`openspec/changes/cp-05-06-canje-caja/`](openspec/changes/cp-05-06-canje-caja/).
+
+### Cómo probar los flujos de puntos
+
+```bash
+# 1. Compilar contratos (obligatorio antes del primer arranque)
+pnpm --filter @app/contracts build
+pnpm --filter @app/carbopuntos-contracts build
+pnpm --filter @app/carbopuntos-client build
+
+# 2. Levantar todo en modo desarrollo
+pnpm dev
+
+# 3. Correr los tests del API (incluye tests de caja y carbopuntos)
+pnpm --filter @app/api test
+
+# 4. Secuencia completa de CI (la misma que corre en cada PR)
+pnpm lint && pnpm typecheck && pnpm build && pnpm test
+```
+
+---
+
 ## Requisitos previos
 
 | Herramienta    | Versión mínima | Cómo verificar           |
