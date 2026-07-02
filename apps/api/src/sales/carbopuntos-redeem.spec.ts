@@ -665,11 +665,13 @@ describe('SalesService.createSale — redemptions (carbopuntos)', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Test 13: solo-canje (redeem-only) persist fails after debit → manual-review log
+  // Test 13: solo-canje (redeem-only) persist fails after debit → NO manual-review log (cp-06)
+  // After cp-06 the isRedeemOnly branch is removed: the hub now performs a NET
+  // reverse (accrued + redeemed), so the manual-review log must NOT be emitted.
   // -----------------------------------------------------------------------
 
-  describe('T13 — solo-canje persist fails after debit → manual-review error logged', () => {
-    it('logs a manual-review error because the hub reverse cannot restore a redeem-only debit (C15)', async () => {
+  describe('T13 — solo-canje persist fails after debit → no manual-review error logged (cp-06)', () => {
+    it('does NOT log a manual-review error after cp-06 (hub reverse is net, no longer a no-op)', async () => {
       // Solo-canje: empty items, redemptions only. The hub debit (redeem) succeeds,
       // then the local persist blows up. The hub `reverse` validates a prior accrual
       // (C15), so it is a no-op for a redeem-only debit — points stay debited.
@@ -719,11 +721,11 @@ describe('SalesService.createSale — redemptions (carbopuntos)', () => {
         ),
       ).rejects.toThrow('DB connection lost');
 
-      // A manual-reconciliation error must be logged for the redeem-only case.
+      // cp-06: the isRedeemOnly branch is gone — no manual-review error must be logged.
       const loggedManualReview = errorSpy.mock.calls.some((call) =>
         /revisi[oó]n manual/i.test(String(call[0])),
       );
-      expect(loggedManualReview).toBe(true);
+      expect(loggedManualReview).toBe(false);
 
       errorSpy.mockRestore();
     });
