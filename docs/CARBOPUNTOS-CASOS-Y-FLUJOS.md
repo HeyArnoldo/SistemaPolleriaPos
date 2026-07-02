@@ -101,11 +101,11 @@
 - Cliente **existente**: funciona (no necesita la API — D13).
 - Cliente **nuevo**: no se puede afiliar; se informa y se reintenta luego. La venta sin puntos no se bloquea.
 
-### C5 — Cancelación de venta que acumuló puntos 🌐⚠️ (D5)
+### C5 — Cancelación de venta que acumuló (o canjeó) puntos 🌐⚠️ (D5)
 
-- Al cancelar, el hub registra una **reversa** que resta los puntos acumulados por esa venta.
-- Idempotente: cancelar dos veces no resta dos veces.
-- Si el hub no responde, la reversa va a la cola de pendientes (D16).
+- Al cancelar, el hub registra una **reversa NETA** de todos los movimientos no anulados de esa venta: acumulación, canje, o la combinación (F6). Esto incluye devolver los puntos canjeados si la venta era un canje-only o venta+canje (ver C15).
+- Idempotente: cancelar dos veces no aplica el cambio dos veces.
+- Si el hub no responde, la reversa va a la cola de pendientes (D16) con la misma clave idempotente, garantizando que al reconectar se aplique exactamente una vez.
 
 ### C6 — Cancelación cuando el cliente ya gastó esos puntos 🌐⚠️ (D5+D6 resueltos)
 
@@ -147,10 +147,16 @@
 
 - La cola de pendientes (D16) reintenta con backoff. Si tras N intentos sigue fallando, se marca para revisión del admin (visible, no se pierde). Evita acumulaciones/canjes "fantasma".
 
-### C15 — Reintento de reversa sobre venta nunca acumulada (offline→cancel offline) 🌐⚠️
+### C15 — Reversa neta en cancelación de canje o venta sin acumulación previa 🌐⚠️
 
-- Una venta creada y cancelada **ambas offline** llega al hub como "cancelada" sin que se haya acumulado nada.
-- **Comportamiento:** el hub, al recibir la reversa, valida que exista el movimiento de acumulación previo (por la clave idempotente). Si no existe, **no hace nada** (no genera saldo negativo espurio).
+- Una venta cancelada puede pertenecer a tres variantes: (a) canje-only (F5), (b) venta+canje (F6), o (c) venta offline que nunca acumuló (offline→cancel offline).
+- **Comportamiento (PR-69):** el hub ejecuta una **reversa NETA** de todos los movimientos no anulados ligados a ese `saleRef`. El hub suma el neto de acumulación y canje y emite un único movimiento de reversa:
+  - Canje-only (saldo 50, canje 20): reversa +20 → el cliente recupera los 20 puntos canjeados.
+  - Venta + canje (acumuló 10, canjeó 10): reversa 0 → el saldo queda intacto (los movimientos se anulan entre sí).
+  - Offline→cancel offline (nunca acumuló): neto = 0 → reversa 0, sin efecto sobre el saldo.
+- **Idempotencia:** si la cancelación llega dos veces (mismo `saleRef`), el hub detecta que ya existe una reversa no anulada y no aplica un segundo cambio de saldo.
+- **Piso 0:** si la reversa excedería el saldo disponible (el cliente ya gastó los puntos que debería recuperar), el saldo se topa en 0 y la diferencia se registra en el detalle del movimiento para auditoría.
+- Ya no es necesario ningún workaround de "revisión manual" para canjes: el hub cubre todos los casos automáticamente.
 
 ---
 
