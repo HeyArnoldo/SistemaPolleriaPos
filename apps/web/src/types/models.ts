@@ -27,6 +27,8 @@ export interface PaymentMethod {
   commissionPercentage: number;
   requiresTransferTime: boolean;
   isActive: boolean;
+  /** URL or base64 data URI for the QR image (e.g. Yape). Null when not configured. */
+  imageUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }

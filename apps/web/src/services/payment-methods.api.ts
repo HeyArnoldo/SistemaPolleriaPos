@@ -18,6 +18,7 @@ export const createPaymentMethod = async (payload: {
   name: string;
   commissionPercentage?: number;
   requiresTransferTime?: boolean;
+  imageUrl?: string | null;
 }): Promise<PaymentMethod> => {
   const { data } = await api.post('/payment-methods', payload);
   return normalizePaymentMethod(data as PaymentMethod);
@@ -36,6 +37,7 @@ export const updatePaymentMethod = async (
     commissionPercentage: number;
     requiresTransferTime: boolean;
     isActive: boolean;
+    imageUrl: string | null;
   }>,
 ): Promise<PaymentMethod> => {
   const { data } = await api.patch(`/payment-methods/${id}`, payload);

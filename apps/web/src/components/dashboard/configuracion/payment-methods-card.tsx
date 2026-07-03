@@ -19,12 +19,15 @@ interface PaymentMethodFormState {
   name: string;
   commissionPercentage: string;
   requiresTransferTime: boolean;
+  /** URL or base64 data URI for the QR image. Empty string means no image. */
+  imageUrl: string;
 }
 
 const DEFAULT_FORM: PaymentMethodFormState = {
   name: '',
   commissionPercentage: '0',
   requiresTransferTime: false,
+  imageUrl: '',
 };
 
 export function PaymentMethodsCard() {
@@ -44,6 +47,7 @@ export function PaymentMethodsCard() {
         name: form.name.trim(),
         commissionPercentage: parseFloat(form.commissionPercentage) || 0,
         requiresTransferTime: form.requiresTransferTime,
+        imageUrl: form.imageUrl.trim() || null,
       },
       {
         onSuccess: () => {
@@ -64,6 +68,7 @@ export function PaymentMethodsCard() {
       name: method.name,
       commissionPercentage: String(method.commissionPercentage),
       requiresTransferTime: method.requiresTransferTime,
+      imageUrl: method.imageUrl ?? '',
     });
   };
 
@@ -76,6 +81,7 @@ export function PaymentMethodsCard() {
           name: editForm.name.trim(),
           commissionPercentage: parseFloat(editForm.commissionPercentage) || 0,
           requiresTransferTime: editForm.requiresTransferTime,
+          imageUrl: editForm.imageUrl.trim() || null,
         },
       },
       {
@@ -152,6 +158,21 @@ export function PaymentMethodsCard() {
               />
               <Label htmlFor="requires-transfer">Requiere hora de transferencia</Label>
             </div>
+            <div className="space-y-1">
+              <Label>Imagen QR (URL o datos base64)</Label>
+              <Input
+                placeholder="https://... o data:image/png;base64,..."
+                value={form.imageUrl}
+                onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
+              />
+              {form.imageUrl.trim() && (
+                <img
+                  src={form.imageUrl.trim()}
+                  alt="Vista previa QR"
+                  className="mt-1 h-20 w-20 rounded border object-contain"
+                />
+              )}
+            </div>
             <div className="flex gap-2">
               <Button size="sm" onClick={handleCreate} disabled={!form.name.trim() || isCreating}>
                 {isCreating ? 'Creando...' : 'Crear'}
@@ -207,6 +228,21 @@ export function PaymentMethodsCard() {
                       <Label htmlFor={`edit-transfer-${method.id}`}>
                         Requiere hora de transferencia
                       </Label>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Imagen QR (URL o datos base64)</Label>
+                      <Input
+                        placeholder="https://... o data:image/png;base64,..."
+                        value={editForm.imageUrl}
+                        onChange={(e) => setEditForm((f) => ({ ...f, imageUrl: e.target.value }))}
+                      />
+                      {editForm.imageUrl.trim() && (
+                        <img
+                          src={editForm.imageUrl.trim()}
+                          alt="Vista previa QR"
+                          className="mt-1 h-20 w-20 rounded border object-contain"
+                        />
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={handleSaveEdit} disabled={isUpdating}>
