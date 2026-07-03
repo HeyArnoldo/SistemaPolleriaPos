@@ -8,7 +8,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { CalendarIcon, Download, Loader2 } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
@@ -24,7 +30,7 @@ import { formatRangeLabel } from '@/lib/report-range';
 export function CashReportCard() {
   const [preset, setPreset] = useState<ReportPreset>('today');
   const [customRange, setCustomRange] = useState<DateRange | undefined>();
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const { mutate: exportReport, isPending } = useExportCashReport();
 
@@ -70,9 +76,17 @@ export function CashReportCard() {
         </Select>
 
         {preset === 'custom' && (
-          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="w-full justify-start text-left font-normal">
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full justify-start text-left font-normal"
+                aria-label={
+                  customRange?.from
+                    ? `Rango seleccionado: ${formatRangeLabel(customRange)}. Cambiar rango`
+                    : 'Seleccionar rango de fechas'
+                }
+              >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {customRange?.from ? (
                   formatRangeLabel(customRange)
@@ -80,18 +94,22 @@ export function CashReportCard() {
                   <span className="text-muted-foreground">Seleccionar rango</span>
                 )}
               </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
+            </DialogTrigger>
+            <DialogContent className="w-auto max-w-fit p-6">
+              <DialogHeader>
+                <DialogTitle>Seleccionar rango de fechas</DialogTitle>
+              </DialogHeader>
               <Calendar
                 mode="range"
+                numberOfMonths={2}
                 selected={customRange}
                 onSelect={(range) => {
                   setCustomRange(range);
-                  if (range?.from && range.to) setCalendarOpen(false);
+                  if (range?.from && range.to) setDialogOpen(false);
                 }}
               />
-            </PopoverContent>
-          </Popover>
+            </DialogContent>
+          </Dialog>
         )}
 
         <Button
