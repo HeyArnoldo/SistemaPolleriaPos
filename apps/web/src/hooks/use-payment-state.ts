@@ -101,6 +101,13 @@ export const getCashMethod = (methods: PaymentMethod[]) =>
 export const getYapeMethod = (methods: PaymentMethod[]) =>
   methods.find((method) => method.isActive && isYapePlinMethodName(method.name));
 
+/**
+ * Returns the imageUrl for the given payment method, or null when absent.
+ * Used by PaymentForm to decide whether to display a QR image at checkout.
+ */
+export const getMethodImageUrl = (method: PaymentMethod | undefined): string | null =>
+  method?.imageUrl ?? null;
+
 const getDefaultSingleMethodId = (methods: PaymentMethod[]) => {
   const cash = getCashMethod(methods);
   return cash?.id ?? methods[0]?.id ?? 1;

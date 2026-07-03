@@ -29,6 +29,12 @@ export class PaymentMethod {
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive: boolean;
 
+  // QR image for this payment method (e.g. Yape QR shown at checkout).
+  // Type `text` supports both plain URLs and base64 data URIs.
+  // Recommended: keep data URIs under 200 KB to avoid large row sizes.
+  @Column({ type: 'text', name: 'image_url', nullable: true, default: null })
+  imageUrl: string | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

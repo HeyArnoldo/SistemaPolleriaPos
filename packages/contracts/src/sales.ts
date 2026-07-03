@@ -104,6 +104,8 @@ export const createPaymentMethodSchema = z.object({
   commissionPercentage: z.number().min(0).max(100).default(0),
   requiresTransferTime: z.boolean().default(false),
   isActive: z.boolean().default(true),
+  // URL or base64 data URI for a QR image (e.g. Yape). Optional for backward compat.
+  imageUrl: z.string().nullable().optional(),
 });
 export type CreatePaymentMethodInput = z.infer<typeof createPaymentMethodSchema>;
 
@@ -116,5 +118,7 @@ export const paymentMethodSchema = z.object({
   commissionPercentage: z.number(),
   requiresTransferTime: z.boolean(),
   isActive: z.boolean(),
+  // Nullable — existing records without an image return null.
+  imageUrl: z.string().nullable().optional(),
 });
 export type PaymentMethod = z.infer<typeof paymentMethodSchema>;

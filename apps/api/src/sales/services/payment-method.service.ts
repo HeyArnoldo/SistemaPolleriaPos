@@ -9,6 +9,9 @@ export const createPaymentMethodSchema = z.object({
   commissionPercentage: z.number().min(0).max(100).optional().default(0),
   requiresTransferTime: z.boolean().optional().default(false),
   isActive: z.boolean().optional().default(true),
+  // URL or base64 data URI for the QR image (e.g. Yape). Nullable — most
+  // payment methods will not have an image.
+  imageUrl: z.string().nullable().optional(),
 });
 
 export type CreatePaymentMethodDto = z.infer<typeof createPaymentMethodSchema>;

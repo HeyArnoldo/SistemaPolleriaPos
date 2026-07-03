@@ -217,6 +217,19 @@ export function PaymentForm({
             </Select>
           </div>
 
+          {singleMethod?.imageUrl && (
+            <div className="flex flex-col items-center gap-1 rounded-md border bg-white p-3">
+              <p className="text-xs text-muted-foreground">
+                El cliente escanea este QR para pagar
+              </p>
+              <img
+                src={singleMethod.imageUrl}
+                alt={`QR ${singleMethod.name}`}
+                className="h-40 w-40 object-contain"
+              />
+            </div>
+          )}
+
           {isSingleCash ? (
             <div className="space-y-1">
               <Label>Monto recibido (efectivo)</Label>
