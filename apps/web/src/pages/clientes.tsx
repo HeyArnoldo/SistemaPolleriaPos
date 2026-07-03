@@ -43,6 +43,7 @@ import {
   useVoidMovement,
 } from '@/hooks/use-customers';
 import { getErrorMessage } from '@/lib/errors';
+import { CarbopuntosInfoCard } from '@/components/dashboard/clientes/carbopuntos-info-card';
 import type { Customer, PointsMovement } from '@app/carbopuntos-contracts';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -416,6 +417,9 @@ function CustomerDetail({ dni, onBack }: CustomerDetailProps) {
           <Edit3 className="w-3.5 h-3.5" /> Ajustar puntos
         </button>
       </div>
+
+      {/* CarboPuntos info: cómo ganar puntos y premios disponibles */}
+      <CarbopuntosInfoCard />
 
       {/* History */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
