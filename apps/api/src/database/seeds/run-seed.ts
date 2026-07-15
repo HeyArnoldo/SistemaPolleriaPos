@@ -8,6 +8,7 @@ import { PaymentMethod } from '../../sales/entities/payment-method.entity';
 import { ProductCategory } from '../../inventory/entities/product-category.entity';
 import { Product } from '../../inventory/entities/product.entity';
 import { TotpCryptoService } from '../../auth/totp-crypto.service';
+import { PRODUCT_CATALOG, PRODUCT_CATEGORY_NAMES } from './product-catalog';
 
 async function run(): Promise<void> {
   await dataSource.initialize();
@@ -35,10 +36,9 @@ async function run(): Promise<void> {
   // ── Product categories ───────────────────────────────────────────────────
   const categoryRepo = dataSource.getRepository(ProductCategory);
 
-  const categoryNames = ['Pollos', 'Bebidas', 'A la carta', 'Extras', 'Otros'];
   const categoryMap: Record<string, ProductCategory> = {};
 
-  for (const name of categoryNames) {
+  for (const name of PRODUCT_CATEGORY_NAMES) {
     let cat = await categoryRepo.findOne({ where: { name } });
     if (!cat) {
       cat = await categoryRepo.save(categoryRepo.create({ name }));
@@ -52,37 +52,21 @@ async function run(): Promise<void> {
   // ── Products ─────────────────────────────────────────────────────────────
   const productRepo = dataSource.getRepository(Product);
 
-  const products: { name: string; price: number; category: string }[] = [
-    // Pollos
-    { name: 'Pollo Entero', price: 38.0, category: 'Pollos' },
-    { name: '1/2 Pollo', price: 19.0, category: 'Pollos' },
-    { name: '1/4 Pollo', price: 10.0, category: 'Pollos' },
-    { name: '1/8 Pollo', price: 6.0, category: 'Pollos' },
-    { name: 'Presa Especial', price: 8.0, category: 'Pollos' },
-    // Bebidas
-    { name: 'Inka Cola 1L', price: 5.0, category: 'Bebidas' },
-    { name: 'Inka Cola 500ml', price: 3.0, category: 'Bebidas' },
-    { name: 'Coca Cola 1L', price: 5.0, category: 'Bebidas' },
-    { name: 'Coca Cola 500ml', price: 3.0, category: 'Bebidas' },
-    { name: 'Agua 500ml', price: 2.0, category: 'Bebidas' },
-    { name: 'Chicha Morada', price: 3.0, category: 'Bebidas' },
-    // A la carta
-    { name: 'Arroz con Leche', price: 4.0, category: 'A la carta' },
-    { name: 'Ensalada', price: 3.0, category: 'A la carta' },
-    // Extras
-    { name: 'Papas Fritas', price: 5.0, category: 'Extras' },
-    { name: 'Cremas', price: 1.0, category: 'Extras' },
-    { name: 'Pan', price: 0.5, category: 'Extras' },
-    // Otros
-    { name: 'Delivery', price: 3.0, category: 'Otros' },
-  ];
-
-  for (const p of products) {
+  for (const p of PRODUCT_CATALOG) {
     const existing = await productRepo.findOne({ where: { name: p.name } });
     if (!existing) {
       const category = categoryMap[p.category];
       if (!category) continue;
-      await productRepo.save(productRepo.create({ name: p.name, price: p.price, category }));
+      await productRepo.save(
+        productRepo.create({
+          name: p.name,
+          price: p.price,
+          imageUrl: null,
+          isActive: true,
+          puntaje: 0,
+          category,
+        }),
+      );
       console.log(`[seed] product created: ${p.name}`);
     } else {
       console.log(`[seed] product already exists: ${p.name}`);

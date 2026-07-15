@@ -53,7 +53,7 @@ Detalles importantes del flujo:
 - Cada cambio de entidad → migración explícita (`pnpm migration:generate ...`),
   revisar el SQL, luego `pnpm migration:run`.
 - El `docker-entrypoint.sh` de la API corre `migration:run → seed → node dist/main.js`.
-- El seed es idempotente (crea admin + métodos de pago + productos de ejemplo).
+- El seed es idempotente (crea admin + métodos de pago + catálogo inicial).
 
 ## Deploy
 
