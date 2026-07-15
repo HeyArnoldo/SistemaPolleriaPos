@@ -16,6 +16,19 @@ interface TenantConfig {
   apiUrl: string;
 }
 
+interface PrintTicketOptions {
+  printerName?: string;
+  ticketWidthMm?: number;
+  heightOffsetMm?: number;
+  debugMode?: boolean;
+}
+
+interface PrintTicketResult {
+  ok: boolean;
+  error?: string;
+  debug?: string;
+}
+
 const CONFIG_FILE = join(app.getPath('userData'), 'config.json');
 
 function readConfig(): TenantConfig | null {
@@ -312,27 +325,69 @@ ipcMain.handle('check-for-updates', async () => {
 
 ipcMain.handle(
   'print-ticket',
-  async (_event, html: string, options?: { printerName?: string; marginsType?: number }) => {
+  async (_event, html: string, options?: PrintTicketOptions): Promise<PrintTicketResult> => {
+    const configuredWidth = options?.ticketWidthMm;
+    const ticketWidthMm =
+      typeof configuredWidth === 'number' &&
+      Number.isFinite(configuredWidth) &&
+      configuredWidth >= 40 &&
+      configuredWidth <= 100
+        ? configuredWidth
+        : 80;
+    const configuredHeightOffset = options?.heightOffsetMm;
+    const heightOffsetMm =
+      typeof configuredHeightOffset === 'number' && Number.isFinite(configuredHeightOffset)
+        ? Math.min(100, Math.max(-100, configuredHeightOffset))
+        : 0;
+    const debugMode = options?.debugMode === true;
+    const contentWidthPx = Math.ceil((ticketWidthMm * 96) / 25.4);
     const printWin = new BrowserWindow({
-      show: false,
+      show: debugMode,
+      width: contentWidthPx,
+      height: 800,
+      useContentSize: true,
       webPreferences: { contextIsolation: true },
     });
-    await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    return new Promise<void>((resolve, reject) => {
-      printWin.webContents.print(
-        {
-          silent: true,
-          printBackground: true,
-          ...(options?.printerName ? { deviceName: options.printerName } : {}),
-          ...(options?.marginsType !== undefined ? { marginsType: options.marginsType } : {}),
-        },
-        (success, errorType) => {
-          printWin.destroy();
-          if (success) resolve();
-          else reject(new Error(errorType));
-        },
+
+    try {
+      await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      const contentHeightPx = await printWin.webContents.executeJavaScript(
+        'document.body.scrollHeight',
       );
-    });
+      const contentHeightMm = Math.max(
+        30,
+        Math.ceil((Number(contentHeightPx) * 25.4) / 96) + 5 + heightOffsetMm,
+      );
+      const debug = debugMode
+        ? `Printer: ${options?.printerName ?? 'default'}, Width: ${ticketWidthMm}mm, Height: ${contentHeightMm}mm (offset: ${heightOffsetMm})`
+        : undefined;
+
+      return await new Promise<PrintTicketResult>((resolve) => {
+        printWin.webContents.print(
+          {
+            silent: true,
+            printBackground: true,
+            ...(options?.printerName ? { deviceName: options.printerName } : {}),
+            pageSize: {
+              width: Math.round(ticketWidthMm * 1000),
+              height: Math.round(contentHeightMm * 1000),
+            },
+            margins: { marginType: 'none' },
+          },
+          (success, errorType) => {
+            if (!printWin.isDestroyed()) printWin.destroy();
+            if (success) resolve({ ok: true, debug });
+            else resolve({ ok: false, error: errorType || 'print_failed', debug });
+          },
+        );
+      });
+    } catch (error) {
+      if (!printWin.isDestroyed()) printWin.destroy();
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'print_failed',
+      };
+    }
   },
 );
 

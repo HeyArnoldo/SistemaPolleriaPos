@@ -6,8 +6,15 @@ const apiUrl: string = ipcRenderer.sendSync('get-api-url');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   apiUrl,
-  printTicket: (html: string, options?: { printerName?: string; marginsType?: number }) =>
-    ipcRenderer.invoke('print-ticket', html, options),
+  printTicket: (
+    html: string,
+    options?: {
+      printerName?: string;
+      ticketWidthMm?: number;
+      heightOffsetMm?: number;
+      debugMode?: boolean;
+    },
+  ) => ipcRenderer.invoke('print-ticket', html, options),
   getPrinters: () => ipcRenderer.invoke('get-printers'),
   saveConfig: (url: string) => ipcRenderer.invoke('save-config', url),
   openSetup: () => ipcRenderer.invoke('open-setup'),

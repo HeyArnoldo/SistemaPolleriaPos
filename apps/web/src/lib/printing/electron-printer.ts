@@ -12,10 +12,22 @@ export const printViaElectron = async (
   }
 
   try {
-    await window.electronAPI.printTicket(html, {
+    const result = await window.electronAPI.printTicket(html, {
       printerName: options.printerName,
+      ticketWidthMm: options.ticketWidthMm,
+      heightOffsetMm: options.heightOffsetMm ?? 0,
+      debugMode: options.debugMode,
     });
-    return { success: true };
+
+    if (result.ok) {
+      return { success: true, debugInfo: result.debug };
+    }
+
+    return {
+      success: false,
+      error: result.error ?? 'print_failed',
+      debugInfo: result.debug,
+    };
   } catch (err) {
     return {
       success: false,
