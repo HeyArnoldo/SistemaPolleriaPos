@@ -319,8 +319,13 @@ declare global {
       apiUrl?: string;
       printTicket: (
         html: string,
-        options?: { printerName?: string; marginsType?: number },
-      ) => Promise<void>;
+        options?: {
+          printerName?: string;
+          ticketWidthMm?: number;
+          heightOffsetMm?: number;
+          debugMode?: boolean;
+        },
+      ) => Promise<{ ok: boolean; error?: string; debug?: string }>;
       getPrinters?: () => Promise<{ name: string; displayName?: string }[]>;
       saveConfig: (apiUrl: string) => Promise<void>;
       /** Re-open the branch setup window to change the configured API URL. */
