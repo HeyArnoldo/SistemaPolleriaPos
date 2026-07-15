@@ -112,6 +112,16 @@ inicio) lo rompen. Si el commit falla, reescribir el subject en minúsculas.
   Si agregás una query que debe estar offline, sumá su key a `CATALOG_KEYS` en
   `lib/query-persister.ts`.
 
+## 11. El seed de catálogo no reemplaza datos existentes
+
+- Categorías y productos se buscan por nombre y solo se crean si faltan. Reiniciar
+  o redeployar el contenedor NO elimina ni actualiza el catálogo existente.
+- Para recrear exactamente el catálogo definido en `database/seeds/product-catalog.ts`,
+  la base debe estar realmente vacía antes de correr migraciones + seed.
+- No borrar productos sobre una base con ventas: `sale_items.product_id` conserva una
+  FK restrictiva hacia `products.id`. Un borrado forzado rompería el historial y las
+  ventas offline pendientes.
+
 ## Pendiente / follow-up recomendado
 
 - **e2e con Postgres real** (supertest): crear venta vía API y verificar

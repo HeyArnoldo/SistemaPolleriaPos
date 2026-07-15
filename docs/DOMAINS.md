@@ -23,6 +23,9 @@ Convención de rutas: todas con prefijo global `/api` (excepto `/health`).
 - Productos: list/create/update + **desactivar** (`isActive: false`) y **reactivar**
   (`isActive: true`) vía PATCH. `price` es decimal → se normaliza a número en
   `products.api.ts`.
+- En una base limpia, el seed carga las 4 categorías y los 45 productos del catálogo
+  Calca definidos en `database/seeds/product-catalog.ts`. Los IDs legacy se conservan
+  solo como trazabilidad; PostgreSQL genera las claves primarias reales.
 - Frontend: `useGetProducts/useGetCategories`, `ProductosTable` con filtros
   (búsqueda, categoría, estado) + `ProductFormDialog`.
 
