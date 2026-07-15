@@ -39,3 +39,24 @@ sesión nueva debe llamar `mem_search("onboarding")` → topic_key
 `onboarding/index`, que apunta a estos docs y a los topic_keys `recovery/*` y
 `workflow/*`. Los docs del repo son la fuente durable de "cómo funciona";
 Engram es el registro de "por qué" y del estado de avance.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+### Onboarding (new dev / new machine)
+
+The graph itself (`graphify-out/`) is gitignored — it is regenerated locally from source, not committed.
+
+1. Install graphify: `uv tool install graphifyy` (requires `uv` or `pipx`, Python 3.10+).
+2. Build the local graph: `graphify update .` (AST-only, no LLM, no API key needed).
+3. Enable the agent hooks locally: `graphify claude install` (`.claude/` is gitignored in this repo, so the PreToolUse reminder is not shared and must be installed per machine).
+
+The committed git hooks in `.husky/` keep the graph fresh on commit/checkout.
