@@ -5,6 +5,9 @@ import { Expense } from '../entities/expense.entity';
 import { Payment } from '../../sales/entities/payment.entity';
 import { BIQuery } from '@app/contracts';
 import { resolveRangeStart, resolveRangeEnd } from './cash.service';
+import { getReportablePaymentSql } from '../../sales/payment-reporting';
+
+const REPORTABLE_PAYMENT_SQL = getReportablePaymentSql();
 
 type ResolvedPeriod = { start: Date; end: Date };
 
@@ -61,8 +64,8 @@ export class BIReportService {
 
     const totalsRow = await paymentQb
       .clone()
-      .select('COALESCE(SUM(payment.grossAmount),0)', 'totalSalesGross')
-      .addSelect('COALESCE(SUM(payment.netAmount),0)', 'totalSalesNet')
+      .select(`COALESCE(SUM(${REPORTABLE_PAYMENT_SQL.grossAmount}),0)`, 'totalSalesGross')
+      .addSelect(`COALESCE(SUM(${REPORTABLE_PAYMENT_SQL.netAmount}),0)`, 'totalSalesNet')
       .addSelect('COALESCE(SUM(payment.commissionAmount),0)', 'totalCommissions')
       .addSelect('COUNT(payment.id)', 'transactionCount')
       .getRawOne<TotalsRow>();
@@ -87,11 +90,11 @@ export class BIReportService {
       .select('method.id', 'paymentMethodId')
       .addSelect('method.name', 'paymentMethodName')
       .addSelect('COALESCE(AVG(payment.commissionPercentage),0)', 'commissionPercentage')
-      .addSelect('COALESCE(SUM(payment.grossAmount),0)', 'salesGross')
-      .addSelect('COALESCE(SUM(payment.netAmount),0)', 'salesNet')
+      .addSelect(`COALESCE(SUM(${REPORTABLE_PAYMENT_SQL.grossAmount}),0)`, 'salesGross')
+      .addSelect(`COALESCE(SUM(${REPORTABLE_PAYMENT_SQL.netAmount}),0)`, 'salesNet')
       .addSelect('COALESCE(SUM(payment.commissionAmount),0)', 'commissionsTotal')
       .addSelect('COUNT(payment.id)', 'transactionCount')
-      .addSelect('COALESCE(AVG(payment.grossAmount),0)', 'averageTicket')
+      .addSelect(`COALESCE(AVG(${REPORTABLE_PAYMENT_SQL.grossAmount}),0)`, 'averageTicket')
       .groupBy('method.id')
       .addGroupBy('method.name')
       .orderBy('method.name', 'ASC')
@@ -139,8 +142,8 @@ export class BIReportService {
       .addSelect('sale.createdAt', 'date')
       .addSelect('method.id', 'paymentMethodId')
       .addSelect('method.name', 'paymentMethodName')
-      .addSelect('payment.grossAmount', 'grossAmount')
-      .addSelect('payment.netAmount', 'netAmount')
+      .addSelect(REPORTABLE_PAYMENT_SQL.grossAmount, 'grossAmount')
+      .addSelect(REPORTABLE_PAYMENT_SQL.netAmount, 'netAmount')
       .addSelect('payment.commissionAmount', 'commissionAmount')
       .addSelect('payment.commissionPercentage', 'commissionPercentage')
       .orderBy('sale.createdAt', 'DESC')
@@ -198,8 +201,8 @@ export class BIReportService {
         `TO_CHAR(DATE_TRUNC('${bucket}', sale.createdAt AT TIME ZONE 'America/Lima'), 'YYYY-MM-DD')`,
         'date',
       )
-      .addSelect('COALESCE(SUM(payment.grossAmount),0)', 'salesGross')
-      .addSelect('COALESCE(SUM(payment.netAmount),0)', 'salesNet')
+      .addSelect(`COALESCE(SUM(${REPORTABLE_PAYMENT_SQL.grossAmount}),0)`, 'salesGross')
+      .addSelect(`COALESCE(SUM(${REPORTABLE_PAYMENT_SQL.netAmount}),0)`, 'salesNet')
       .addSelect('COALESCE(SUM(payment.commissionAmount),0)', 'commissionsTotal')
       .addSelect('COUNT(payment.id)', 'transactionCount')
       .groupBy(`DATE_TRUNC('${bucket}', sale.createdAt AT TIME ZONE 'America/Lima')`)

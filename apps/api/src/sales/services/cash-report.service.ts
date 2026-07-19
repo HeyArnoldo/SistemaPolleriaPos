@@ -4,6 +4,7 @@ import * as ExcelJS from 'exceljs';
 import { Payment } from '../entities/payment.entity';
 import { Sale } from '../entities/sale.entity';
 import { Expense } from '../../cash/entities/expense.entity';
+import { getReportablePaymentAmounts } from '../payment-reporting';
 
 interface DayInfo {
   key: string;
@@ -71,7 +72,11 @@ export class CashReportService {
     const workbook = new ExcelJS.Workbook();
     const dayGroups = new Map<string, DayGroup>();
 
-    const addToGroup = (date: Date, kind: 'payment' | 'expense' | 'redemptionSale', item: Payment | Expense | Sale) => {
+    const addToGroup = (
+      date: Date,
+      kind: 'payment' | 'expense' | 'redemptionSale',
+      item: Payment | Expense | Sale,
+    ) => {
       const info = this.getLimaDayInfo(date);
       const existing = dayGroups.get(info.key);
       const group: DayGroup = existing ?? { info, payments: [], expenses: [], redemptionSales: [] };
@@ -150,9 +155,8 @@ export class CashReportService {
     expenses: Expense[],
     redemptionSales: Sale[],
   ): void {
-    // netAmount is always persisted at sale creation time; fall back to amount if zero (legacy rows)
     const totalSales = payments.reduce(
-      (acc, p) => acc + Number(p.netAmount !== 0 ? p.netAmount : p.amount),
+      (acc, p) => acc + getReportablePaymentAmounts(p, p.sale?.totalAmount).netAmount,
       0,
     );
     const totalExpenses = expenses.reduce((acc, e) => acc + Number(e.amount), 0);
@@ -163,7 +167,7 @@ export class CashReportService {
       const key = p.paymentMethod?.id;
       if (!key) return;
       const current = methodTotals.get(key) ?? { name: p.paymentMethod.name, total: 0 };
-      current.total += Number(p.netAmount !== 0 ? p.netAmount : p.amount);
+      current.total += getReportablePaymentAmounts(p, p.sale?.totalAmount).netAmount;
       methodTotals.set(key, current);
     });
 
@@ -224,9 +228,7 @@ export class CashReportService {
     const buildCanjeConcept = (sale: Sale): string => {
       const redemptions = sale.redemptions ?? [];
       if (!redemptions.length) return 'Canje';
-      return redemptions
-        .map((r) => `${r.description} (-${r.costPoints} pts)`)
-        .join('\n');
+      return redemptions.map((r) => `${r.description} (-${r.costPoints} pts)`).join('\n');
     };
 
     const transactions: Transaction[] = [
@@ -240,7 +242,7 @@ export class CashReportService {
             ? `${p.paymentMethod?.name ?? 'N/D'} (MIXTO)`
             : (p.paymentMethod?.name ?? 'N/D'),
         saleNumber: p.sale?.saleNumber ?? '',
-        amount: Number(p.netAmount !== 0 ? p.netAmount : p.amount),
+        amount: getReportablePaymentAmounts(p, p.sale?.totalAmount).netAmount,
         transferTime: p.transferTime ?? '',
         isMixed: p.sale?.id ? mixedSaleIds.has(p.sale.id) : false,
       })),
@@ -615,7 +617,10 @@ export class CashReportService {
 
     // Redemption prizes (Motivo = Canje) — from canje sales; grouped by description
     // Uses description as key (not productId) because prizes are free-text today (design decision)
-    const canjeProductTotals = new Map<string, { name: string; quantity: number; motivo: string }>();
+    const canjeProductTotals = new Map<
+      string,
+      { name: string; quantity: number; motivo: string }
+    >();
     redemptionSales.forEach((sale) => {
       (sale.redemptions ?? []).forEach((r) => {
         const key = r.description;
