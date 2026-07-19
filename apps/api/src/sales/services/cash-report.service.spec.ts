@@ -329,6 +329,35 @@ function getInventorySheetCellValues(workbook: ExcelJS.Workbook): string[] {
   return values;
 }
 
+describe('cash received as change-bearing tender', () => {
+  it('reports S/40 of revenue when S/100 was received for a S/40 sale', async () => {
+    const pm = makePaymentMethod();
+    const sale = makeSale(400, 'VTA-400', 40, false);
+    const payment = makePayment(400, sale, 100, 100, pm);
+    const service = await buildService([payment]);
+
+    const result = await service.exportCashReport('2025-01-15', '2025-01-15');
+    const workbook = await readWorkbook(result.buffer);
+    const sheet = workbook.worksheets[0];
+    let transactionAmount: number | null = null;
+    let reportTotal: number | null = null;
+
+    sheet.eachRow((row) => {
+      if (row.getCell(5).value === 'VTA-400') {
+        const value = row.getCell(6).value;
+        transactionAmount = typeof value === 'number' ? value : null;
+      }
+      if (row.getCell(5).value === 'TOTAL') {
+        const value = row.getCell(6).value;
+        reportTotal = typeof value === 'number' ? value : null;
+      }
+    });
+
+    expect(transactionAmount).toBe(40);
+    expect(reportTotal).toBe(40);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // R1 — canje-only sale → Tipo=Canje row, amount 0; monetary totals UNCHANGED
 // ---------------------------------------------------------------------------

@@ -6,6 +6,9 @@ import { PaymentMethod } from '../../sales/entities/payment-method.entity';
 import { Payment } from '../../sales/entities/payment.entity';
 import { User } from '../../users/user.entity';
 import { CreateExpenseDto, SyncExpensesDto } from '../dto/create-expense.dto';
+import { getReportablePaymentSql } from '../../sales/payment-reporting';
+
+const REPORTABLE_PAYMENT_SQL = getReportablePaymentSql();
 
 export interface DateRangeFilter {
   from?: string;
@@ -184,8 +187,8 @@ export class CashService {
       .innerJoin('payment.paymentMethod', 'method')
       .select('method.id', 'paymentMethodId')
       .addSelect('method.name', 'paymentMethodName')
-      .addSelect('COALESCE(SUM(payment.grossAmount), 0)', 'salesGross')
-      .addSelect('COALESCE(SUM(payment.netAmount), 0)', 'salesNet')
+      .addSelect(`COALESCE(SUM(${REPORTABLE_PAYMENT_SQL.grossAmount}), 0)`, 'salesGross')
+      .addSelect(`COALESCE(SUM(${REPORTABLE_PAYMENT_SQL.netAmount}), 0)`, 'salesNet')
       .addSelect('COALESCE(SUM(payment.commissionAmount), 0)', 'commissionsTotal')
       .where('sale.isCanceled = :isCanceled', { isCanceled: false })
       .andWhere('sale.createdAt >= :start', { start })
@@ -298,8 +301,8 @@ export class CashService {
       .addSelect('method.id', 'paymentMethodId')
       .addSelect('method.name', 'paymentMethodName')
       .addSelect('payment.amount', 'amount')
-      .addSelect('payment.grossAmount', 'grossAmount')
-      .addSelect('payment.netAmount', 'netAmount')
+      .addSelect(REPORTABLE_PAYMENT_SQL.grossAmount, 'grossAmount')
+      .addSelect(REPORTABLE_PAYMENT_SQL.netAmount, 'netAmount')
       .addSelect('payment.commissionAmount', 'commissionAmount')
       .addSelect('sale.createdAt', 'createdAt')
       .where('sale.isCanceled = :isCanceled', { isCanceled: false })

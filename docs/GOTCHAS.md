@@ -122,6 +122,14 @@ inicio) lo rompen. Si el commit falla, reescribir el subject en minúsculas.
   FK restrictiva hacia `products.id`. Un borrado forzado rompería el historial y las
   ventas offline pendientes.
 
+## 12. El efectivo entregado no es ingreso
+
+- `payments.amount` conserva cuánto entregó el cliente para poder imprimir recibido y
+  vuelto. Una venta de S/40 pagada con S/100 debe mantener `amount = 100`.
+- Caja, BI y Excel deben sumar los importes reportables de
+  `payment-reporting.ts`, que descuentan el vuelto y limitan el ingreso al total de la
+  venta. No sumar `payments.amount` directamente en reportes financieros.
+
 ## Pendiente / follow-up recomendado
 
 - **e2e con Postgres real** (supertest): crear venta vía API y verificar

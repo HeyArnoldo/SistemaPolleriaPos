@@ -26,6 +26,7 @@ import { CarbopuntosPendingService } from '../../carbopuntos/pending-queue.servi
 import type { CarbopuntosClient } from '@app/carbopuntos-client';
 import { ConfigService } from '@nestjs/config';
 import { isRetryableHubError } from '../../carbopuntos/retryable-hub-error';
+import { capPaymentAmountsToSaleTotal } from '../payment-reporting';
 
 export interface SalesFilter {
   from?: string;
@@ -188,14 +189,15 @@ export class SalesService {
         const gross = payDto.amount;
         const commissionAmount = gross * (commissionPct / 100);
         const net = gross - commissionAmount;
+        const reportableAmounts = capPaymentAmountsToSaleTotal(gross, net, totalAmount);
 
         await manager.save(
           manager.create(Payment, {
             sale: created,
             paymentMethod: pm,
             amount: payDto.amount,
-            grossAmount: gross,
-            netAmount: net,
+            grossAmount: reportableAmounts.grossAmount,
+            netAmount: reportableAmounts.netAmount,
             commissionPercentage: commissionPct,
             commissionAmount,
             transferTime: payDto.transferTime ?? null,
