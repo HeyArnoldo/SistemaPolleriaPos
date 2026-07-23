@@ -77,3 +77,38 @@ export const generateSaleNumber = (): string => {
   const day = dayStr;
   return `${month}-${day}-${pad4(seq)}`;
 };
+
+/**
+ * Idempotency-key keeper for a single cart/sale build session.
+ *
+ * `get()` returns the SAME sale number on every call until `reset()` is invoked
+ * (called when the cart is cleared after a successful sale). This is what makes
+ * the POS resilient to rapid double-clicks under high customer traffic: two
+ * quick submits of the same cart reuse one sale number, so the server's unique
+ * `sale_number` guard rejects the second one instead of creating a duplicate
+ * sale.
+ *
+ * The generator is injectable so the caching behavior can be unit-tested
+ * without touching `localStorage`.
+ */
+export interface SaleNumberKeeper {
+  get: () => string;
+  reset: () => void;
+}
+
+export const createSaleNumberKeeper = (
+  generate: () => string = generateSaleNumber,
+): SaleNumberKeeper => {
+  let current: string | null = null;
+  return {
+    get: () => {
+      if (current === null) {
+        current = generate();
+      }
+      return current;
+    },
+    reset: () => {
+      current = null;
+    },
+  };
+};

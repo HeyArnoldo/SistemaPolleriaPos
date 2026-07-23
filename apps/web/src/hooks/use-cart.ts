@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { Product } from '@/types/models';
+import { createSaleNumberKeeper, type SaleNumberKeeper } from '@/lib/ventas';
 
 export interface CartItem {
   product: Product;
@@ -8,6 +9,14 @@ export interface CartItem {
 
 export function useCart() {
   const [items, setItems] = useState<CartItem[]>([]);
+  // Idempotency key for the sale currently being built. Stable across repeated
+  // submits of the same cart (rapid double-click safe); reset only when the cart
+  // is cleared after a successful sale, so the next sale gets a fresh number.
+  // Lazily created once and retained for the hook's lifetime.
+  const saleNumberKeeper = useRef<SaleNumberKeeper | null>(null);
+  if (saleNumberKeeper.current === null) {
+    saleNumberKeeper.current = createSaleNumberKeeper();
+  }
 
   const addItem = useCallback((product: Product) => {
     setItems((prev) => {
@@ -35,6 +44,15 @@ export function useCart() {
 
   const clearCart = useCallback(() => {
     setItems([]);
+    saleNumberKeeper.current?.reset();
+  }, []);
+
+  /** Stable sale number for the current cart (same value until the cart is cleared). */
+  const getSaleNumber = useCallback(() => {
+    if (saleNumberKeeper.current === null) {
+      saleNumberKeeper.current = createSaleNumberKeeper();
+    }
+    return saleNumberKeeper.current.get();
   }, []);
 
   const total = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -46,6 +64,7 @@ export function useCart() {
     removeItem,
     updateQuantity,
     clearCart,
+    getSaleNumber,
     total,
     itemCount,
   };

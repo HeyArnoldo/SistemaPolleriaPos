@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,7 +20,6 @@ import { TicketPreviewDialog } from '@/components/dashboard/ventas/ticket-previe
 import { CustomerPanel } from '@/components/dashboard/ventas/customer-panel';
 import { RewardsModal } from '@/components/dashboard/ventas/rewards-modal';
 import { ConfirmRedemptionModal } from '@/components/dashboard/ventas/confirm-redemption-modal';
-import { generateSaleNumber } from '@/lib/ventas';
 import { getErrorMessage } from '@/lib/errors';
 import { enqueueSale } from '@/lib/queue-manager';
 import { buildTicketHtml } from '@/lib/ticket';
@@ -31,11 +30,14 @@ import type { Sale, CreateSaleDTO } from '@/types/models';
 import type { Customer, Reward } from '@app/carbopuntos-contracts';
 
 export default function VentasPage() {
-  const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
+  const { items, addItem, removeItem, updateQuantity, clearCart, getSaleNumber, total } = useCart();
   const { data: products = [], isLoading: loadingProducts } = useGetProducts();
   const { data: categories = [] } = useGetCategories();
   const { data: paymentMethods = [] } = useGetPaymentMethods();
   const { mutate: createSale, isPending: isSubmitting } = useCreateSale();
+  // Synchronous re-entry guard: blocks a second submit fired before React has a
+  // chance to re-render the disabled button (rapid double-click under traffic).
+  const submitInFlightRef = useRef(false);
   const { isOnline } = useConnectivity();
   const { data: rewards = [] } = useGetRewards(true);
 
@@ -132,6 +134,9 @@ export default function VentasPage() {
   };
 
   const doRegisterSale = () => {
+    // Ignore re-entry while a submit is already in flight (rapid double-click).
+    if (submitInFlightRef.current) return;
+
     const payments = isOnlyRedemption ? [] : (buildPaymentsPayload() ?? undefined);
 
     if (!isOnlyRedemption && !payments) {
@@ -145,8 +150,11 @@ export default function VentasPage() {
     // Typed against the Zod contract (CreateSaleDTO) so any shape drift versus
     // server validation is a COMPILE ERROR (customerDni camelCase, redemption
     // shape, etc.).
+    // getSaleNumber() returns a STABLE number for this cart: if this sale is
+    // submitted twice (double-click / retry), both attempts carry the same
+    // sale_number and the server rejects the duplicate instead of creating one.
     const salePayload: CreateSaleDTO = {
-      saleNumber: generateSaleNumber(),
+      saleNumber: getSaleNumber(),
       items: items.map((i) => ({
         productId: i.product.id,
         quantity: i.quantity,
@@ -158,14 +166,20 @@ export default function VentasPage() {
       ...(redemptions ? { redemptions } : {}),
     };
 
+    submitInFlightRef.current = true;
+
     if (!isOnline) {
-      void enqueueSale(salePayload.saleNumber ?? '', salePayload).then(() => {
-        toast.success('Venta guardada sin conexión — se enviará al reconectarse');
-        clearCart();
-        resetPayment();
-        setNotesInput('');
-        resetCarbopuntos();
-      });
+      void enqueueSale(salePayload.saleNumber ?? '', salePayload)
+        .then(() => {
+          toast.success('Venta guardada sin conexión — se enviará al reconectarse');
+          clearCart();
+          resetPayment();
+          setNotesInput('');
+          resetCarbopuntos();
+        })
+        .finally(() => {
+          submitInFlightRef.current = false;
+        });
       return;
     }
 
@@ -195,7 +209,25 @@ export default function VentasPage() {
         resetCarbopuntos();
       },
       onError: (err) => {
+        // A duplicate sale_number (409) means this exact sale was already
+        // registered by a first, faster request — treat it as an avoided
+        // duplicate, not an error.
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 409) {
+          // The sale is already registered (a prior, faster request won). Treat
+          // it as terminal — clear the cart and reset state (which also resets
+          // the stable sale number) so the terminal is not stuck in a 409 loop.
+          toast.info('Esta venta ya estaba registrada — se evitó un duplicado.');
+          clearCart();
+          resetPayment();
+          setNotesInput('');
+          resetCarbopuntos();
+          return;
+        }
         toast.error(getErrorMessage(err, 'Error al registrar la venta'));
+      },
+      onSettled: () => {
+        submitInFlightRef.current = false;
       },
     });
   };
@@ -393,6 +425,7 @@ export default function VentasPage() {
           currentBalance={customerBalance}
           pendingRewards={pendingRewards}
           onConfirm={doRegisterSale}
+          isSubmitting={isSubmitting}
         />
       )}
     </div>
