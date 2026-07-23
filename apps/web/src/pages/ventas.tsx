@@ -38,6 +38,9 @@ export default function VentasPage() {
   // Synchronous re-entry guard: blocks a second submit fired before React has a
   // chance to re-render the disabled button (rapid double-click under traffic).
   const submitInFlightRef = useRef(false);
+  // Same idea for the ticket-preview "Imprimir" button, so a double-tap does not
+  // print the same ticket twice.
+  const printInFlightRef = useRef(false);
   const { isOnline } = useConnectivity();
   const { data: rewards = [] } = useGetRewards(true);
 
@@ -124,13 +127,21 @@ export default function VentasPage() {
 
   const handleConfirmPrint = () => {
     if (!previewSale) return;
+    // Re-entry guard: a double-tap on "Imprimir" must not print the same ticket
+    // twice before the dialog finishes closing.
+    if (printInFlightRef.current) return;
+    printInFlightRef.current = true;
     setPreviewOpen(false);
     const settings = getPrintSettings();
     const html = buildTicketHtml(previewSale, settings);
-    void printTicket(html, settings).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : 'Error desconocido';
-      toast.error(`Error al imprimir: ${message}`);
-    });
+    void printTicket(html, settings)
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Error desconocido';
+        toast.error(`Error al imprimir: ${message}`);
+      })
+      .finally(() => {
+        printInFlightRef.current = false;
+      });
   };
 
   const doRegisterSale = () => {
