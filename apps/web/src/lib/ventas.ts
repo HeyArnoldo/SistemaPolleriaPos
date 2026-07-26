@@ -54,8 +54,84 @@ const writeTicketCounter = (state: TicketCounterState) => {
   }
 };
 
-export const syncTicketCounterFromSale = (): boolean => {
+const SALE_NUMBER_REGEX = new RegExp(`^(${MONTH_SHORT.join('|')})-(\\d{2})-(\\d{4})$`);
+
+/** Today's date key ('YYYYMMDD') in America/Lima — same shape generateSaleNumber stores. */
+const limaDateKeyString = (): string => limaDateString().replace(/-/g, '');
+
+/** Date key ('YYYYMMDD') for an arbitrary Date, evaluated in America/Lima. */
+const limaDateKeyFromDate = (date: Date): string =>
+  date.toLocaleDateString('en-CA', { timeZone: 'America/Lima' }).replace(/-/g, '');
+
+const parseSaleNumberParts = (
+  saleNumber: string,
+): { monthIndex: number; day: number; seq: number } | null => {
+  const match = saleNumber.trim().toUpperCase().match(SALE_NUMBER_REGEX);
+  if (!match) return null;
+  const monthIndex = MONTH_SHORT.indexOf(match[1]);
+  if (monthIndex < 0) return null;
+  const day = Number(match[2]);
+  const seq = Number(match[3]);
+  if (!Number.isFinite(day) || !Number.isFinite(seq)) return null;
+  return { monthIndex, day, seq };
+};
+
+/** Sequence number embedded in a sale number (e.g. 'JUL-24-0120' -> 120), or null. */
+export const parseSaleNumberSeq = (saleNumber: string): number | null => {
+  const parts = parseSaleNumberParts(saleNumber);
+  return parts ? parts.seq : null;
+};
+
+/** Best-effort date key for a sale number when no createdAt is available. */
+const getDateKeyFromSaleNumber = (saleNumber: string): string | null => {
+  const parts = parseSaleNumberParts(saleNumber);
+  if (!parts) return null;
+  const todayKey = limaDateKeyString();
+  const year = Number(todayKey.slice(0, 4));
+  const mmdd = `${pad2(parts.monthIndex + 1)}${pad2(parts.day)}`;
+  const dateKey = `${year}${mmdd}`;
+  // A month-day ahead of today must belong to the previous year.
+  return dateKey > todayKey ? `${year - 1}${mmdd}` : dateKey;
+};
+
+/** Advances the local counter only if the given (date, seq) is ahead of what is stored. */
+export const syncTicketCounter = (next: TicketCounterState): boolean => {
+  try {
+    const current = parseTicketCounter(localStorage.getItem(TICKET_COUNTER_KEY));
+    if (
+      !current ||
+      next.date > current.date ||
+      (next.date === current.date && next.seq > current.seq)
+    ) {
+      writeTicketCounter(next);
+      return true;
+    }
+  } catch {
+    // ignore storage errors
+  }
   return false;
+};
+
+/**
+ * Aligns the local ticket counter to the server's last sale so the NEXT generated
+ * number stays ahead of what the server already has. This is what lets the local
+ * correlativo self-heal after a localStorage wipe / fresh desktop install, keeping
+ * the offline-first counter from re-issuing numbers that already exist on the server.
+ */
+export const syncTicketCounterFromSale = (saleNumber?: string, createdAt?: string): boolean => {
+  if (!saleNumber) return false;
+  const seq = parseSaleNumberSeq(saleNumber);
+  if (seq === null) return false;
+
+  let dateKey: string | null = null;
+  if (createdAt) {
+    const date = new Date(createdAt);
+    if (Number.isFinite(date.getTime())) dateKey = limaDateKeyFromDate(date);
+  }
+  if (!dateKey) dateKey = getDateKeyFromSaleNumber(saleNumber);
+  if (!dateKey) return false;
+
+  return syncTicketCounter({ date: dateKey, seq });
 };
 
 export const generateSaleNumber = (): string => {

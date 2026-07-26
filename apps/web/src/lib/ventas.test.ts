@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSaleNumberKeeper } from '@/lib/ventas';
+import { createSaleNumberKeeper, parseSaleNumberSeq } from '@/lib/ventas';
 
 describe('createSaleNumberKeeper', () => {
   it('returns the same sale number across repeated get() calls (rapid double-click safe)', () => {
@@ -23,5 +23,19 @@ describe('createSaleNumberKeeper', () => {
 
     expect(second).not.toBe(first);
     expect(calls).toBe(2);
+  });
+});
+
+describe('parseSaleNumberSeq', () => {
+  it('extracts the sequence from a valid sale number', () => {
+    expect(parseSaleNumberSeq('JUL-24-0120')).toBe(120);
+    expect(parseSaleNumberSeq('ENE-01-0001')).toBe(1);
+    expect(parseSaleNumberSeq('jul-24-0007')).toBe(7); // case-insensitive
+  });
+
+  it('returns null for malformed sale numbers', () => {
+    expect(parseSaleNumberSeq('SALE-123')).toBeNull();
+    expect(parseSaleNumberSeq('XXX-24-0120')).toBeNull();
+    expect(parseSaleNumberSeq('')).toBeNull();
   });
 });
