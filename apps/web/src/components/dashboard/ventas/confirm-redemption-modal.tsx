@@ -20,6 +20,7 @@ interface ConfirmRedemptionModalProps {
   currentBalance: number;
   pendingRewards: Reward[];
   onConfirm: () => void;
+  isSubmitting?: boolean;
 }
 
 function shortName(fullName: string): string {
@@ -35,6 +36,7 @@ export function ConfirmRedemptionModal({
   currentBalance,
   pendingRewards,
   onConfirm,
+  isSubmitting = false,
 }: ConfirmRedemptionModalProps) {
   const totalCost = pendingRewards.reduce((s, r) => s + r.costPoints, 0);
   const newBalance = currentBalance - totalCost;
@@ -75,11 +77,17 @@ export function ConfirmRedemptionModal({
         </p>
 
         <DialogFooter className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={isSubmitting}
+            onClick={() => onOpenChange(false)}
+          >
             Cancelar
           </Button>
           <Button
             className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
+            disabled={isSubmitting}
             onClick={() => {
               onConfirm();
               onOpenChange(false);

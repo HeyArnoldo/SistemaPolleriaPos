@@ -15,7 +15,10 @@ export const createSale = async (payload: CreateSaleDTO): Promise<Sale> => {
   return data;
 };
 
-export const getSales = async (filter?: GetSalesFilter): Promise<Sale[]> => {
+export const getSales = async (
+  filter?: GetSalesFilter,
+  options?: { timeoutMs?: number },
+): Promise<Sale[]> => {
   const params = new URLSearchParams();
   if (filter?.from) params.set('from', filter.from);
   if (filter?.to) params.set('to', filter.to);
@@ -25,6 +28,7 @@ export const getSales = async (filter?: GetSalesFilter): Promise<Sale[]> => {
   const query = params.toString();
   const { data } = await api.get<{ data: Sale[]; total: number }>(
     `/sales${query ? `?${query}` : ''}`,
+    options?.timeoutMs ? { timeout: options.timeoutMs } : undefined,
   );
   return data.data;
 };

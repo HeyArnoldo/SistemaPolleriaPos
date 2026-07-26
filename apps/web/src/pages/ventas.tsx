@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,8 +20,9 @@ import { TicketPreviewDialog } from '@/components/dashboard/ventas/ticket-previe
 import { CustomerPanel } from '@/components/dashboard/ventas/customer-panel';
 import { RewardsModal } from '@/components/dashboard/ventas/rewards-modal';
 import { ConfirmRedemptionModal } from '@/components/dashboard/ventas/confirm-redemption-modal';
-import { generateSaleNumber } from '@/lib/ventas';
 import { getErrorMessage } from '@/lib/errors';
+import { syncTicketCounterFromSale } from '@/lib/ventas';
+import { getSales } from '@/services/sales.api';
 import { enqueueSale } from '@/lib/queue-manager';
 import { buildTicketHtml } from '@/lib/ticket';
 import { getPrintSettings } from '@/lib/print-settings';
@@ -30,12 +31,24 @@ import { calcPointsToEarn, calcRedemptionCost, buildRedemptionsPayload } from '@
 import type { Sale, CreateSaleDTO } from '@/types/models';
 import type { Customer, Reward } from '@app/carbopuntos-contracts';
 
+/** Upper bound for the pre-sale correlativo sync; keeps the register responsive. */
+const TICKET_SYNC_TIMEOUT_MS = 4000;
+
 export default function VentasPage() {
-  const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
+  const { items, addItem, removeItem, updateQuantity, clearCart, getSaleNumber, total } = useCart();
   const { data: products = [], isLoading: loadingProducts } = useGetProducts();
   const { data: categories = [] } = useGetCategories();
   const { data: paymentMethods = [] } = useGetPaymentMethods();
   const { mutate: createSale, isPending: isSubmitting } = useCreateSale();
+  // Synchronous re-entry guard: blocks a second submit fired before React has a
+  // chance to re-render the disabled button (rapid double-click under traffic).
+  const submitInFlightRef = useRef(false);
+  // Same idea for the ticket-preview "Imprimir" button, so a double-tap does not
+  // print the same ticket twice.
+  const printInFlightRef = useRef(false);
+  // Drives the button spinner while the correlativo is being reconciled with the
+  // server (before the mutation starts, so isSubmitting is still false).
+  const [isSyncingCounter, setIsSyncingCounter] = useState(false);
   const { isOnline } = useConnectivity();
   const { data: rewards = [] } = useGetRewards(true);
 
@@ -92,8 +105,9 @@ export default function VentasPage() {
   const isOnlyRedemption = items.length === 0 && pendingRewards.length > 0 && !!linkedCustomer;
 
   const canRegister = items.length > 0 || isOnlyRedemption;
+  const isBusy = isSubmitting || isSyncingCounter;
   const isSubmitDisabled =
-    !canRegister || isSubmitting || (items.length > 0 && (!canSubmit || total <= 0));
+    !canRegister || isBusy || (items.length > 0 && (!canSubmit || total <= 0));
 
   const pointsToEarn = calcPointsToEarn(items);
   const redemptionCost = calcRedemptionCost(pendingRewards);
@@ -122,16 +136,49 @@ export default function VentasPage() {
 
   const handleConfirmPrint = () => {
     if (!previewSale) return;
+    // Re-entry guard: a double-tap on "Imprimir" must not print the same ticket
+    // twice before the dialog finishes closing.
+    if (printInFlightRef.current) return;
+    printInFlightRef.current = true;
     setPreviewOpen(false);
     const settings = getPrintSettings();
     const html = buildTicketHtml(previewSale, settings);
-    void printTicket(html, settings).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : 'Error desconocido';
-      toast.error(`Error al imprimir: ${message}`);
-    });
+    void printTicket(html, settings)
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Error desconocido';
+        toast.error(`Error al imprimir: ${message}`);
+      })
+      .finally(() => {
+        printInFlightRef.current = false;
+      });
   };
 
-  const doRegisterSale = () => {
+  // Aligns the local correlativo with the server's last sale before generating a
+  // number, so a wiped localStorage / fresh install cannot re-issue a number that
+  // already exists on the server. Best-effort and online-only — offline keeps
+  // using the local counter (offline-first).
+  const syncTicketCounterWithServer = async () => {
+    if (!isOnline) return;
+    try {
+      // Bounded timeout: the submit lock is held across this call, so a hung
+      // request must never be able to wedge the register. On timeout we simply
+      // fall back to the local counter.
+      const [lastSale] = await getSales(
+        { page: 1, limit: 1 },
+        { timeoutMs: TICKET_SYNC_TIMEOUT_MS },
+      );
+      if (lastSale?.saleNumber) {
+        syncTicketCounterFromSale(lastSale.saleNumber, lastSale.createdAt);
+      }
+    } catch {
+      // best-effort — a failed/timed-out sync just falls back to the local counter
+    }
+  };
+
+  const doRegisterSale = async () => {
+    // Ignore re-entry while a submit is already in flight (rapid double-click).
+    if (submitInFlightRef.current) return;
+
     const payments = isOnlyRedemption ? [] : (buildPaymentsPayload() ?? undefined);
 
     if (!isOnlyRedemption && !payments) {
@@ -142,11 +189,25 @@ export default function VentasPage() {
     const redemptions =
       pendingRewards.length > 0 ? buildRedemptionsPayload(pendingRewards) : undefined;
 
+    // Lock BEFORE any async work so a second tap during the counter sync is ignored.
+    submitInFlightRef.current = true;
+
+    // Reconcile the local counter with the server before generating the number.
+    setIsSyncingCounter(true);
+    try {
+      await syncTicketCounterWithServer();
+    } finally {
+      setIsSyncingCounter(false);
+    }
+
     // Typed against the Zod contract (CreateSaleDTO) so any shape drift versus
     // server validation is a COMPILE ERROR (customerDni camelCase, redemption
     // shape, etc.).
+    // getSaleNumber() returns a STABLE number for this cart: if this sale is
+    // submitted twice (double-click / retry), both attempts carry the same
+    // sale_number and the server rejects the duplicate instead of creating one.
     const salePayload: CreateSaleDTO = {
-      saleNumber: generateSaleNumber(),
+      saleNumber: getSaleNumber(),
       items: items.map((i) => ({
         productId: i.product.id,
         quantity: i.quantity,
@@ -159,13 +220,17 @@ export default function VentasPage() {
     };
 
     if (!isOnline) {
-      void enqueueSale(salePayload.saleNumber ?? '', salePayload).then(() => {
-        toast.success('Venta guardada sin conexión — se enviará al reconectarse');
-        clearCart();
-        resetPayment();
-        setNotesInput('');
-        resetCarbopuntos();
-      });
+      void enqueueSale(salePayload.saleNumber ?? '', salePayload)
+        .then(() => {
+          toast.success('Venta guardada sin conexión — se enviará al reconectarse');
+          clearCart();
+          resetPayment();
+          setNotesInput('');
+          resetCarbopuntos();
+        })
+        .finally(() => {
+          submitInFlightRef.current = false;
+        });
       return;
     }
 
@@ -195,7 +260,25 @@ export default function VentasPage() {
         resetCarbopuntos();
       },
       onError: (err) => {
+        // A duplicate sale_number (409) means this exact sale was already
+        // registered by a first, faster request — treat it as an avoided
+        // duplicate, not an error.
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 409) {
+          // The sale is already registered (a prior, faster request won). Treat
+          // it as terminal — clear the cart and reset state (which also resets
+          // the stable sale number) so the terminal is not stuck in a 409 loop.
+          toast.info('Esta venta ya estaba registrada — se evitó un duplicado.');
+          clearCart();
+          resetPayment();
+          setNotesInput('');
+          resetCarbopuntos();
+          return;
+        }
         toast.error(getErrorMessage(err, 'Error al registrar la venta'));
+      },
+      onSettled: () => {
+        submitInFlightRef.current = false;
       },
     });
   };
@@ -346,7 +429,7 @@ export default function VentasPage() {
               onClick={() => void handleSubmit()}
               disabled={isSubmitDisabled}
             >
-              {isSubmitting ? (
+              {isBusy ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Guardando...
@@ -393,6 +476,7 @@ export default function VentasPage() {
           currentBalance={customerBalance}
           pendingRewards={pendingRewards}
           onConfirm={doRegisterSale}
+          isSubmitting={isSubmitting}
         />
       )}
     </div>

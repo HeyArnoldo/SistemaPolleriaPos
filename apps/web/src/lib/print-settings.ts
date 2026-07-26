@@ -13,7 +13,10 @@ export type PrintSettings = {
 const STORAGE_KEY = 'pos.printSettings';
 
 const DEFAULT_SETTINGS: PrintSettings = {
-  previewBeforePrint: true,
+  // Default to direct printing: a fresh install (empty localStorage) should
+  // print silently like a POS, not pop a preview that needs an extra click.
+  // Terminals that explicitly enable the preview keep it (their saved value wins).
+  previewBeforePrint: false,
   printerName: undefined,
   ticketWidthMm: 80,
   paddingTopMm: 0,

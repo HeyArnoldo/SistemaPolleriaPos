@@ -537,7 +537,9 @@ export class SalesService {
     const [data, total] = await this.saleRepo.findAndCount({
       where,
       relations: ['user', 'items', 'items.product', 'payments', 'payments.paymentMethod'],
-      order: { createdAt: 'DESC' },
+      // Tiebreak by PK so pagination (and "last sale" lookups) stay deterministic
+      // when two sales share the same createdAt.
+      order: { createdAt: 'DESC', id: 'DESC' },
       skip,
       take: limit,
     });
